@@ -6,5 +6,6 @@ export const dynamic = "force-dynamic";
 export default async function Page() {
   const mode = await access();
   if (!mode) redirect("/login");
-  return <Dashboard jobs={listJobs()} companies={listCompanies()} local={mode === "local"} />;
+  const [jobs, companies] = await Promise.all([listJobs(), listCompanies()]);
+  return <Dashboard jobs={jobs} companies={companies} local={mode === "local"} />;
 }

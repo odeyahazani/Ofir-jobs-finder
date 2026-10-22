@@ -1,0 +1,8 @@
+.local/
+.env*
+docs/
+tests/
+supabase/
+collector/
+.github/
+scripts/

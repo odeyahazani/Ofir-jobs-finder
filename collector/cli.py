@@ -75,9 +75,10 @@ def import_applications(db, path):
             db.execute("INSERT INTO imports VALUES (?,?,?,?) ON CONFLICT(canonical_url) DO UPDATE SET application_status=excluded.application_status,applied_at=excluded.applied_at,imported_at=excluded.imported_at", values)
             db.execute("UPDATE jobs SET application_status=?,familiar=1,user_updated_at=? WHERE url=?", (values[1], now(), values[0]))
     print(f"Imported {len(validated)} application records")
+    return validated
 
 
-def digest(db, send=False):
+def digest(db, send=False, delivery_store=None):
     day = datetime.now(ZoneInfo("Asia/Jerusalem")).date().isoformat()
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=30)).isoformat(timespec="seconds")
     rows = db.execute("""SELECT e.id AS event_id,j.*,c.name AS company FROM job_events e JOIN jobs j ON j.id=e.job_id
@@ -114,6 +115,9 @@ def digest(db, send=False):
     except sqlite3.IntegrityError:
         print("Today's digest was already sent or attempted; inspect digest_runs before any manual retry")
         return
+    if delivery_store and not delivery_store.reserve_digest(day):
+        print("Today's cloud digest was already sent or attempted; no duplicate message sent")
+        return
     body = json.dumps({"chat_id": chat, "text": text[:4000], "link_preview_options": {"is_disabled": True}}).encode()
     try:
         request = Request(f"https://api.telegram.org/bot{token}/sendMessage", data=body, headers={"Content-Type": "application/json"})
@@ -124,7 +128,11 @@ def digest(db, send=False):
     except Exception:
         with db:
             db.execute("UPDATE digest_runs SET status='uncertain' WHERE day=?", (day,))
+        if delivery_store:
+            delivery_store.finish_digest(day, "uncertain", [])
         raise ValueError("Telegram delivery unconfirmed; inspect Telegram before retrying. Credentials have not been logged.") from None
+    if delivery_store:
+        delivery_store.finish_digest(day, "sent", [{"job_id": row["id"], "version": row["version"]} for row in rows])
     with db:
         for row in rows:
             db.execute("UPDATE job_events SET notified_at=? WHERE id=?", (now(), row["event_id"]))

@@ -20,6 +20,10 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     return Response.json({ error: "אחד השדות אינו תקין" }, { status: 400 });
   }
   const patch = Object.fromEntries(Object.entries(body).map(([key, value]) => [key, typeof value === "boolean" ? Number(value) : value])) as Record<string, string | number>;
-  const changed = updateJob(id, patch);
-  return changed ? Response.json({ ok: true }) : Response.json({ error: "המשרה לא נמצאה" }, { status: 404 });
+  try {
+    const changed = await updateJob(id, patch);
+    return changed ? Response.json({ ok: true }) : Response.json({ error: "המשרה לא נמצאה" }, { status: 404 });
+  } catch {
+    return Response.json({ error: "השמירה נכשלה. נסה שוב בעוד רגע." }, { status: 503 });
+  }
 }

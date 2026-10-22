@@ -16,3 +16,15 @@ Validated in this cloud instance on 2026-10-22; these observations do not prove 
 - `install_script`, `start_skill`, allowed source domains and external-configuration requirements were saved in the environment draft. Draft save does not publish, apply runtime settings or deploy this application.
 
 Not yet validated: real Google OAuth login/account rejection, Telegram delivery, host scheduling, persistent hosting/backups and a new-task snapshot restore. These require the chosen hosting/provider settings and secure credentials. The implementation is a working local milestone; public operation remains a later step.
+
+## Vercel/Supabase preparation (2026-10-22)
+
+- Next now supports Supabase PostgreSQL storage using the authenticated Google user's session. Vercel disallows the SQLite fallback and uses Supabase by default in production. No service-role key is needed by the web app.
+- The SQL setup was applied to PostgreSQL through PGlite, including an owner allowlist, RLS policies and worker functions. All 11 SQL tests passed: anonymous/other-account access is denied, only the allowed Google account reads records and edits feedback, collected fields cannot be edited by that account, repeated sync/import is safe, newer cloud data wins and notification reservations persist.
+- All 44 Python tests passed, including cloud snapshot restoration, preserving application progress, paginated reads, cloud digest reservations and uncertain delivery. Network delivery remains mocked in those tests.
+- All 4 local browser workflow tests passed after converting the web storage API to asynchronous operations. They use the isolated SQLite test database, not the external Supabase project.
+- Production build passed with `VERCEL=1 OFIR_STORAGE=supabase`. File-trace inspection verified that local databases, docs, tests and setup SQL are excluded from the server bundles.
+- `supabase/setup.sql` includes a single email placeholder and seeds 138 companies. It does not contain real owner credentials, collected jobs or personal feedback. Existing local data was not removed or uploaded.
+- A manual-only GitHub Actions collector workflow is prepared. It has not been executed against the user's project, and no scheduled scans or real Telegram delivery were activated.
+
+Outstanding external checks: apply SQL to the actual Supabase project, configure Vercel variables/deploy, verify actual Google sign-in/owner restriction, migrate the retained local database and run a real cloud scan. The project's publishable key, allowed email and worker key were not available to this process during preparation; saved UI settings were not treated as failed or re-entered.

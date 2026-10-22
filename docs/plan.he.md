@@ -13,8 +13,8 @@
 
 ## גבולות הגרסה
 
-- Next.js ו־SQLite בדיסק קבוע; Python לאיסוף ותזמון; Supabase Auth ל־Google בלבד. אין תשלום לשירות ניתוח AI ואין צורך במפתח LLM.
-- SQLite מאפשר עבודה מקומית מיידית ללא חשבון חיצוני. פריסה מחייבת שרת יחיד עם דיסק קבוע, תהליך Next.js ומשימת תזמון. אסור לפרוס את מסד הנתונים על דיסק זמני של serverless. בהמשך ניתן להעביר את האחסון ל־Postgres/Supabase לפי צורכי האירוח.
+- Next.js ו־SQLite בדיסק קבוע; Python לאיסוף ותזמון; Supabase Auth ל־Google; אחסון Supabase לפריסה ו־SQLite לפיתוח מקומי. אין תשלום לשירות ניתוח AI ואין צורך במפתח LLM.
+- SQLite מאפשר עבודה מקומית מיידית ללא חשבון חיצוני. ב־Vercel משתמשים במצב Supabase ובאיסוף נפרד דרך GitHub Actions; מצב זה שומר משרות, משוב והיסטוריית התראות ב־PostgreSQL. תזמון אוטומטי וחיבור חי דורשים עדיין הגדרה ואימות. שרת יחיד יכול להמשיך להשתמש ב־SQLite עם דיסק קבוע.
 - התחברות Google מוכנה בקוד אך מחייבת הגדרה חיצונית ובדיקת חשבון אמיתית. מצב מקומי עובד רק בפיתוח על loopback. במצב production אין עקיפת התחברות.
 - איסוף Greenhouse משתמש ב־API הקריאה הציבורי; Comeet משתמש בנתוני JSON ציבוריים שמוטמעים בדפי החברה והמשרות; ל־Spectrum Dynamics קיים מתאם ייעודי לדפי המשרות. קיימת גם תמיכה ב־JobPosting JSON-LD ובקישורים ציבוריים מפורשים. דף JavaScript ללא נתונים מסומן כלא נתמך. זו אינה הבטחה לתמיכה בכל עמוד Comeet.
 - קבוצת הבדיקה: Alma Lasers, ForSight Robotics, Eitan Medical, H2Pro, Orbit Communication Systems, Augury, Astera Labs, Spectrum Dynamics Medical.

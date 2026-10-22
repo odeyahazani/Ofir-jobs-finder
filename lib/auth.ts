@@ -29,7 +29,7 @@ export async function access(): Promise<"local" | "google" | null> {
   try {
     const client = await supabase();
     const { data: { user }, error } = await client.auth.getUser();
-    if (error || !user || !user.email_confirmed_at || user.email?.toLowerCase() !== process.env.OFIR_ALLOWED_EMAIL?.toLowerCase()) return null;
+    if (error || !user || !user.email_confirmed_at || user.app_metadata?.provider !== "google" || user.email?.toLowerCase() !== process.env.OFIR_ALLOWED_EMAIL?.toLowerCase()) return null;
     return "google";
   } catch { return null; }
 }

@@ -1,0 +1,47 @@
+name: Job collector
+
+# Manual until credentials, real login and Telegram delivery have been validated.
+on:
+  workflow_dispatch:
+    inputs:
+      command:
+        description: Operation
+        type: choice
+        options: [scan, check, digest-preview, digest-send]
+        default: scan
+
+permissions:
+  contents: read
+
+# Share this group with future scheduled runs so snapshots cannot race each other.
+concurrency:
+  group: ofir-cloud-collector
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      APP_URL: ${{ vars.APP_URL }}
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run selected operation
+        env:
+          OPERATION: ${{ inputs.command }}
+        run: |
+          case "$OPERATION" in
+            scan) python -m collector.cloud scan ;;
+            check) python -m collector.cloud check ;;
+            digest-preview) python -m collector.cloud digest ;;
+            digest-send) python -m collector.cloud digest --send ;;
+            *) exit 2 ;;
+          esac

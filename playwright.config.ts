@@ -10,7 +10,7 @@ export default defineConfig({
   },
   webServer: {
     command: "python tests/seed_e2e.py && npm run dev -- --port 3100",
-    env: { OFIR_DB_PATH: database, LOCAL_DEV_MODE: "1", APP_URL: "http://127.0.0.1:3100", NEXT_TELEMETRY_DISABLED: "1" },
+    env: { OFIR_DB_PATH: database, OFIR_STORAGE: "sqlite", LOCAL_DEV_MODE: "1", APP_URL: "http://127.0.0.1:3100", NEXT_TELEMETRY_DISABLED: "1" },
     url: "http://127.0.0.1:3100", reuseExistingServer: false, timeout: 60000,
   },
 });

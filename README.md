@@ -1,6 +1,10 @@
 # Ofir Jobs Finder
 
-Personal Hebrew/RTL job tracker for Ofir Cohen. Next.js 16 + React, a persistent SQLite database, a standard-library Python collector, optional Google sign-in via Supabase Auth, and a Telegram daily digest. No paid LLM or maps API is required.
+Personal Hebrew/RTL job tracker for Ofir Cohen. Next.js 16 + React, Supabase storage for deployment and SQLite for local development, a standard-library Python collector, optional Google sign-in via Supabase Auth, and a Telegram daily digest. No paid LLM or maps API is required.
+
+## Cloud deployment
+
+Vercel is supported with `OFIR_STORAGE=supabase` and a Supabase PostgreSQL database protected by RLS. See [step-by-step cloud deployment](docs/cloud-deployment.he.md). Apply `supabase/setup.sql` with the owner email placeholder filled first. The web server uses the signed-in Google user and publishable key; no service-role key is used by the website. The durable collector runs separately with `python -m collector.cloud`, with a manual GitHub Actions workflow provided. Real Google/Supabase/Telegram operation still requires provider settings and credentials. Automatic scheduling is not activated.
 
 ## Development
 
@@ -28,11 +32,13 @@ Import CSV columns: `url,status,applied_at`; `url` is a specific HTTPS job URL, 
 ## Validation
 
 ```bash
-npm test
+npm test                                # Python + real PostgreSQL SQL/RLS tests (PGlite)
 npm run typecheck
 npm run build
 npm run test:e2e
 ```
+
+SQL permission tests exercise PostgreSQL via PGlite, with test Google claims and no external Supabase connection. They verify owner-only access, column restrictions, repeatable imports/syncs and durable digest reservations.
 
 Browser tests use a separate `.local/e2e.sqlite`, test-only job fixtures and port 3100; they do not send network requests to ATS sites or Telegram. They require Chromium: the config uses `/usr/bin/chromium` when available, otherwise run `npx playwright install chromium`. Override the executable with `PLAYWRIGHT_CHROMIUM_PATH` when needed. Stop any development server first; Next development servers share a build lock. Real source connectivity is checked separately with `npm run scan` and is never inferred from fixture tests.
 
@@ -72,7 +78,7 @@ The scheduler computes Asia/Jerusalem time itself, runs scans once at 08:00/17:0
 
 ## Deployment and data
 
-Use one Linux host/container with a persistent volume and Node/Python, or migrate storage to Postgres before using serverless. The current SQLite architecture is incompatible with stateless Vercel/GitHub Actions storage. A free host is not guaranteed to provide both persistence and always-on scheduling; choose hosting after checking current limits. Run `npm ci`, `npm run build`, `npm run db:init`, then `npm start` behind an HTTPS reverse proxy that preserves the public Host/Origin and forwards to loopback. Configure a process manager for Next plus the scheduler. Keep the repository and database private; candidate and application history are personal data.
+For Vercel, use the Supabase storage mode described above and the independent cloud collector workflow. GitHub Actions runners rebuild temporary SQLite state from Supabase and persist their results using restricted database operations; they do not rely on runner disks or caches for durable data. Never use SQLite storage on Vercel. For a single Linux host, local SQLite remains available with a persistent volume. Free service tiers are subject to current usage limits. Run `npm ci`, `npm run build`, `npm run db:init`, then `npm start` behind an HTTPS reverse proxy that preserves the public Host/Origin and forwards to loopback. Configure a process manager for Next plus the scheduler. Keep the repository and database private; candidate and application history are personal data.
 
 Back up with SQLite's online backup API, not by copying only the live main file (WAL may contain recent writes):
 
