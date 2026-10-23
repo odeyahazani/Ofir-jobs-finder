@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS private.ofir_owner (
  singleton BOOLEAN PRIMARY KEY DEFAULT true CHECK (singleton),
  email TEXT NOT NULL CHECK (email=lower(email))
 );
+ALTER TABLE private.ofir_owner ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON private.ofir_owner FROM PUBLIC, anon, authenticated;
 
 CREATE OR REPLACE FUNCTION private.configure_owner(owner_email TEXT)

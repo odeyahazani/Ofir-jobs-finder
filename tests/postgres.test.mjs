@@ -45,6 +45,15 @@ test("anonymous role has no direct table access and cannot invoke worker operati
   });
 });
 
+test("all application tables, including the private allowlist, explicitly enable RLS", async () => {
+  const result = await db.query(`SELECT n.nspname,c.relname,c.relrowsecurity FROM pg_class c
+    JOIN pg_namespace n ON n.oid=c.relnamespace
+    WHERE (n.nspname='public' AND c.relname IN ('companies','jobs','scans','job_events','imports','digest_runs'))
+       OR (n.nspname='private' AND c.relname='ofir_owner')`);
+  assert.equal(result.rows.length, 7);
+  assert.ok(result.rows.every(row => row.relrowsecurity));
+});
+
 test("another authenticated user sees no rows and cannot change feedback or the owner", async () => {
   await as("authenticated", "someone-else@example.com", async () => {
     assert.equal((await db.query("SELECT * FROM public.jobs")).rows.length, 0);
