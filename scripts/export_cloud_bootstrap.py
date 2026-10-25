@@ -23,14 +23,19 @@ def export(source, target):
     upgrade = (ROOT / "supabase/upgrade-growth.sql").read_text().rstrip()
     if not upgrade.endswith("COMMIT;"):
         raise ValueError("Upgrade script must end in COMMIT")
+    data_sql = ("\nSELECT public.ofir_sync($ofir_snapshot$" + encoded + "$ofir_snapshot$::jsonb);\n"
+                "SELECT public.ofir_link_discoveries();\nCOMMIT;\n")
     sql = ("-- PRIVATE LOCAL DATA TRANSFER. Do not commit or post this generated file.\n"
            "-- Run the complete file in your own Supabase project's SQL Editor as database owner.\n" + upgrade[:-len("COMMIT;")] +
-           "\nSELECT public.ofir_sync($ofir_snapshot$" + encoded + "$ofir_snapshot$::jsonb);\n"
-           "SELECT public.ofir_link_discoveries();\nCOMMIT;\n")
+           data_sql)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(sql)
     target.chmod(0o600)
+    data_target = target.with_name(target.stem + "-data-only" + target.suffix)
+    data_target.write_text("-- PRIVATE DATA ONLY. Apply supabase/upgrade-growth.sql separately first.\nBEGIN;\n" + data_sql)
+    data_target.chmod(0o600)
     print(f"Private SQL transfer prepared: {len(payload['companies'])} companies, {len(payload['jobs'])} jobs; {target.stat().st_size} bytes")
+    print("Separate data-only SQL file prepared for the two-step SQL Editor workflow")
 
 
 if __name__ == "__main__":

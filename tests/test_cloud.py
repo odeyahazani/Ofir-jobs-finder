@@ -12,6 +12,7 @@ from collector.store import connect, seed, save_job
 from collector.scoring import assess
 from collector import cli
 from scripts.build_supabase_setup import generate
+from scripts.export_cloud_bootstrap import export
 
 
 class CloudTests(unittest.TestCase):
@@ -35,6 +36,16 @@ class CloudTests(unittest.TestCase):
     def test_generated_setup_matches_checked_in_sql(self):
         self.assertEqual(Path("supabase/setup.sql").read_text(), generate())
         self.assertEqual(generate().count("REPLACE_WITH_OFIR_GOOGLE_EMAIL"), 1)
+
+    def test_export_provides_a_private_data_only_file_without_function_definitions(self):
+        self.job()
+        target = Path(self.temp.name) / "transfer.sql"
+        export(Path(self.temp.name) / "test.sqlite", target)
+        data = target.with_name("transfer-data-only.sql").read_text()
+        self.assertNotIn("CREATE OR REPLACE FUNCTION", data)
+        self.assertIn("SELECT public.ofir_sync($ofir_snapshot$", data)
+        self.assertTrue(data.rstrip().endswith("COMMIT;"))
+        self.assertEqual(target.stat().st_mode & 0o777, 0o600)
 
     def test_restored_snapshot_retains_feedback_and_event_identity(self):
         self.job()
