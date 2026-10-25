@@ -61,6 +61,13 @@ class ScoringTests(unittest.TestCase):
             with self.subTest(title=title):
                 self.assertFalse(self.score(title=title)["eligible"])
 
+    def test_team_leader_is_not_recommended_even_with_high_fit(self):
+        result = self.score(title="Failure Analysis and Quality Control Team Leader")
+        self.assertGreaterEqual(result["score"], 70)
+        self.assertFalse(result["eligible"])
+        self.assertEqual(result["exclusion_reason"], "תפקיד בכיר או ניהולי")
+        self.assertTrue(self.score(title="Integration Engineer", description=DESCRIPTION + " Work with the team leader.")["eligible"])
+
     def test_unknown_experience_not_assumed_entry(self):
         result = self.score(description="Hardware testing and Python")
         self.assertEqual(result["experience"], "לא צוין בבירור")

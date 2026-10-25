@@ -2,7 +2,7 @@
 import re
 from datetime import datetime, timezone, timedelta
 
-SENIOR = r"\b(senior|sr\.?|lead|principal|staff|director|manager|head of)\b|בכיר|מנהל|ראש צוות"
+SENIOR = r"\b(senior|sr\.?|lead|leader|principal|staff|director|manager|head of)\b|בכיר|מנהל|ראש צוות"
 ROLE = r"integrat|validat|verific|test|experiment|laborator|optical|optics|photon|imag(?:e|ing)|signal|sensor|measurement|hardware|electronic|electrical|physic|system|r&d|research|algorithm|אינטגרציה|ולידציה|בדיקות|אלקטרו|אופטיקה|פיזיק|מעבדה|מערכות"
 SOFTWARE_ONLY = r"\b(backend|frontend|front.end|back.end|full.stack|devops|site reliability|data analyst|data scientist|recruiter|accountant|sales)\b"
 
