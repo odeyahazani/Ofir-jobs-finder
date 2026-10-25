@@ -16,14 +16,16 @@ def parse_job(document, url):
     if not job_url(url):
         raise SourceError('unsupported', 'Not a reviewed Camtek job URL')
     document = re.sub(r'(</?(?:h[1-6]|a|button)\b[^>]*>)', r'\n\1\n', document)
-    lines = [line.strip().lstrip('\ufeff') for line in plain(document).splitlines() if line.strip().lstrip('\ufeff')]
+    lines = [line.replace('\ufeff', '').strip() for line in plain(document).splitlines() if line.replace('\ufeff', '').strip()]
+    labels = [re.sub(r'\s+', ' ', line).casefold().rstrip(':').strip() for line in lines]
     try:
-        start = lines.index('Back to Careers') + 1
-        description = lines.index('Description', start)
-        requirements = lines.index('Requirements', description + 1)
-        end = lines.index('Apply Now', requirements + 1)
+        start = labels.index('back to careers') + 1
+        description = labels.index('description', start)
+        requirements = labels.index('requirements', description + 1)
+        end = labels.index('apply now', requirements + 1)
     except ValueError:
-        raise SourceError('unsupported', 'Camtek detail markers changed; not treating the page as a verified job') from None
+        missing = [label for label in ('back to careers', 'description', 'requirements', 'apply now') if label not in labels]
+        raise SourceError('unsupported', 'Camtek detail markers missing or out of order: ' + ', '.join(missing or ['marker order'])) from None
     metadata = lines[start:description]
     # Reviewed pages have title / department / actual location, optionally a work model.
     work_pattern = r'Full[ -]time|Part[ -]time'
@@ -46,5 +48,12 @@ def collect_camtek(company, client):
     urls = sorted({urljoin(BOARD, link) for link in links if job_url(urljoin(BOARD, link))})
     if not urls or len(urls) > 100:
         raise SourceError('unsupported', 'Camtek listing links missing or exceed the reviewed scan budget')
-    # Fail the source on a failed detail: an incomplete scan must not claim zero jobs.
-    return [parse_job(client.get(url), url) for url in urls]
+    jobs, errors = [], []
+    for url in urls:
+        try:
+            jobs.append(parse_job(client.get(url), url))
+        except SourceError as error:
+            errors.append(url + ' (' + error.message + ')')
+    if errors:
+        raise SourceError('unsupported', f'Partial Camtek scan: {len(jobs)} complete jobs; {len(errors)} detail pages failed. First failures: ' + '; '.join(errors[:3]), partial_jobs=jobs)
+    return jobs

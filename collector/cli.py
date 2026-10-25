@@ -30,7 +30,13 @@ def scan(db, company_name=None, limit=None):
         with db:
             scan_id = db.execute("INSERT INTO scans(company_id,started_at,status) VALUES (?,?,'running')", (company["id"], started)).lastrowid
         try:
-            jobs = collect(company)
+            partial = None
+            try:
+                jobs = collect(company)
+            except SourceError as error:
+                if not error.partial_jobs:
+                    raise
+                jobs, partial = error.partial_jobs, error
             new, eligible = 0, 0
             seen = []
             with db:
@@ -42,14 +48,17 @@ def scan(db, company_name=None, limit=None):
                     new += save_job(db, company["id"], job, assessment)
                     seen.append(canonical_url(job["url"]))
                 # Only a successful complete official API listing establishes that missing jobs closed.
-                if company["ats_hint"] in {"Greenhouse", "Comeet"}:
+                if partial is None and company["ats_hint"] in {"Greenhouse", "Comeet"}:
                     existing = db.execute("SELECT id,url FROM jobs WHERE company_id=?", (company["id"],)).fetchall()
                     for old in existing:
                         if old["url"] not in seen:
                             db.execute("UPDATE jobs SET status='closed' WHERE id=?", (old["id"],))
-                status = "ok" if jobs else "empty"
+                status = partial.status if partial else "ok" if jobs else "empty"
                 message = f"{len(jobs)} jobs extracted; {eligible} eligible; {new} new"
-                db.execute("UPDATE companies SET source_status=?,last_checked=?,last_result=?,job_count=?,verified_url=? WHERE id=?", (status, now(), message, len(jobs), company["career_url"], company["id"]))
+                if partial:
+                    failures += 1
+                    message += '; ' + partial.message
+                db.execute("UPDATE companies SET source_status=?,last_checked=?,last_result=?,job_count=?,verified_url=? WHERE id=?", (status, now(), message, None if partial else len(jobs), company["career_url"], company["id"]))
                 db.execute("UPDATE scans SET finished_at=?,status=?,fetched_count=?,eligible_count=?,new_count=?,message=? WHERE id=?", (now(), status, len(jobs), eligible, new, message, scan_id))
             print(company["name"], status, message)
         except SourceError as error:

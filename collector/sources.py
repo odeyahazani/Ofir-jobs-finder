@@ -22,8 +22,9 @@ TRUSTED_SOURCE_HOSTS = ATS_HOSTS | {"www.augury.com"} | {urlsplit(c["career_url"
 
 
 class SourceError(Exception):
-    def __init__(self, status, message):
+    def __init__(self, status, message, partial_jobs=None):
         self.status, self.message = status, message
+        self.partial_jobs = partial_jobs or []
         super().__init__(message)
 
 

@@ -205,6 +205,20 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(self.db.execute("SELECT status FROM jobs").fetchone()[0], "open")
         self.assertIsNone(self.db.execute("SELECT job_count FROM companies WHERE id=?", (self.company["id"],)).fetchone()[0])
 
+    def test_partial_scan_saves_complete_jobs_without_claiming_completeness_or_closing_old_jobs(self):
+        self.save()
+        complete = {**self.job, "source_id": "fixture-new", "url": "https://job-boards.greenhouse.io/augury/jobs/456"}
+        error = SourceError("unsupported", "A detail page failed", partial_jobs=[complete])
+        with patch("collector.cli.collect", side_effect=error):
+            self.assertEqual(cli.scan(self.db, "Augury"), 1)
+        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM jobs WHERE status='open'").fetchone()[0], 2)
+        company = self.db.execute("SELECT source_status,job_count,last_result FROM companies WHERE id=?", (self.company["id"],)).fetchone()
+        self.assertEqual(company["source_status"], "unsupported")
+        self.assertIsNone(company["job_count"])
+        self.assertIn("1 jobs extracted", company["last_result"])
+        self.assertIn("A detail page failed", company["last_result"])
+        self.assertEqual(self.db.execute("SELECT fetched_count FROM scans ORDER BY id DESC LIMIT 1").fetchone()[0], 1)
+
     def test_successful_full_api_scan_marks_missing_jobs_closed(self):
         self.save()
         with patch("collector.cli.collect", return_value=[]):

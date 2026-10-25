@@ -17,6 +17,21 @@ class CamtekTests(unittest.TestCase):
         self.assertNotIn('Not a job', job['description'])
         self.assertTrue(assess(job['title'], job['description'], job['location'], {'notes': 'semiconductor optics'})['eligible'])
 
+    def test_cosmetic_marker_case_spacing_and_punctuation_are_accepted(self):
+        document = DOCUMENT.replace('Back to Careers', 'BACK  TO Careers').replace('Description', 'Description:').replace('Requirements', 'REQUIREMENTS:').replace('Apply Now', 'Apply\u00a0Now')
+        self.assertEqual(parse_job(document, URL)['source_id'], 'TEST.001')
+
+    def test_partial_scan_keeps_valid_jobs_and_reports_failed_url(self):
+        other = BOARD + 'TEST.002/'
+        client = MagicMock()
+        client.get.side_effect = [f'<a href="{URL}">First</a><a href="{other}">Second</a>', '<html>Unexpected job layout</html>', DOCUMENT]
+        with self.assertRaises(SourceError) as caught:
+            collect_camtek({'career_url': BOARD}, client)
+        self.assertEqual(len(caught.exception.partial_jobs), 1)
+        self.assertIn(URL, caught.exception.message)
+        self.assertIn('requirements', caught.exception.message)
+        self.assertEqual(client.get.call_count, 3)
+
     def test_missing_work_model_stays_unknown_without_losing_location(self):
         job = parse_job(DOCUMENT.replace('<p>Full-time</p>', ''), URL)
         self.assertEqual(job['location'], 'Migdal Haemek')
