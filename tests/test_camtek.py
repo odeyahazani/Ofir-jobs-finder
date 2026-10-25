@@ -29,8 +29,14 @@ class CamtekTests(unittest.TestCase):
             collect_camtek({'career_url': BOARD}, client)
         self.assertEqual(len(caught.exception.partial_jobs), 1)
         self.assertIn(URL, caught.exception.message)
-        self.assertIn('requirements', caught.exception.message)
+        self.assertIn('description', caught.exception.message)
         self.assertEqual(client.get.call_count, 3)
+
+    def test_no_distinct_requirements_section_is_retained_only_for_review(self):
+        job = parse_job(DOCUMENT.replace('<h2>Requirements</h2>', ''), URL)
+        self.assertEqual(job['status'], 'unverified')
+        self.assertTrue(job['requirements_unconfirmed'])
+        self.assertIn('Electrical engineering degree', job['description'])
 
     def test_missing_work_model_stays_unknown_without_losing_location(self):
         job = parse_job(DOCUMENT.replace('<p>Full-time</p>', ''), URL)
@@ -43,7 +49,7 @@ class CamtekTests(unittest.TestCase):
         self.assertFalse(assess(job['title'], job['description'], job['location'], {'notes': 'semiconductor optics'})['eligible'])
 
     def test_missing_markers_metadata_or_wrong_host_are_not_verified(self):
-        for document, url in [(DOCUMENT.replace('Apply Now', 'Closed'), URL), (DOCUMENT.replace('<p>R&amp;D</p>', ''), URL), (DOCUMENT.replace('Requirements', 'Different layout'), URL), (DOCUMENT, URL.replace('www.camtek.com', 'evil.example'))]:
+        for document, url in [(DOCUMENT.replace('Apply Now', 'Closed'), URL), (DOCUMENT.replace('<p>R&amp;D</p>', ''), URL), (DOCUMENT, URL.replace('www.camtek.com', 'evil.example'))]:
             with self.assertRaises(SourceError): parse_job(document, url)
 
     def test_only_observed_detail_links_are_fetched_once(self):

@@ -21,11 +21,11 @@ def parse_job(document, url):
     try:
         start = labels.index('back to careers') + 1
         description = labels.index('description', start)
-        requirements = labels.index('requirements', description + 1)
-        end = labels.index('apply now', requirements + 1)
+        end = labels.index('apply now', description + 1)
     except ValueError:
-        missing = [label for label in ('back to careers', 'description', 'requirements', 'apply now') if label not in labels]
+        missing = [label for label in ('back to careers', 'description', 'apply now') if label not in labels]
         raise SourceError('unsupported', 'Camtek detail markers missing or out of order: ' + ', '.join(missing or ['marker order'])) from None
+    requirements = next((index for index in range(description + 1, end) if labels[index] == 'requirements'), None)
     metadata = lines[start:description]
     # Reviewed pages have title / department / actual location, optionally a work model.
     work_pattern = r'Full[ -]time|Part[ -]time'
@@ -33,11 +33,13 @@ def parse_job(document, url):
     if not valid or len(metadata[0]) > 250:
         raise SourceError('unsupported', 'Camtek job metadata changed; location cannot be inferred')
     body = '\n'.join(lines[description:end])
-    if requirements <= description + 1 or end <= requirements + 1 or len(body) < 150:
+    if len(body) < 150 or (requirements is not None and (requirements <= description + 1 or end <= requirements + 1)):
         raise SourceError('unsupported', 'Camtek job description or requirements missing')
     return {'source_id': urlsplit(url).path.strip('/').split('/')[-1], 'title': metadata[0],
             'location': metadata[2], 'work_model': metadata[3] if len(metadata) == 4 else 'לא צוין', 'url': url, 'description': body,
-            'published_at': None, 'updated_at': None, 'status': 'open'}
+            'published_at': None, 'updated_at': None,
+            'requirements_unconfirmed': requirements is None,
+            'status': 'unverified' if requirements is None else 'open'}
 
 
 def collect_camtek(company, client):

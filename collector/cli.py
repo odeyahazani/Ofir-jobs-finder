@@ -42,6 +42,8 @@ def scan(db, company_name=None, limit=None):
             with db:
                 for job in jobs:
                     assessment = assess(job["title"], job["description"], job["location"], company)
+                    if job.get("requirements_unconfirmed"):
+                        assessment.update(eligible=False, exclusion_reason="דרישות המשרה לא חולצו בסעיף מובחן — נדרשת בדיקה ידנית")
                     if not within_age_limit(job.get("published_at")):
                         assessment.update(eligible=False, exclusion_reason="תאריך הפרסום מחוץ לחלון ששת החודשים")
                     eligible += bool(assessment["eligible"])

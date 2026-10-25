@@ -219,6 +219,16 @@ class StoreTests(unittest.TestCase):
         self.assertIn("A detail page failed", company["last_result"])
         self.assertEqual(self.db.execute("SELECT fetched_count FROM scans ORDER BY id DESC LIMIT 1").fetchone()[0], 1)
 
+    def test_unconfirmed_requirements_never_pass_eligibility_even_with_a_high_score(self):
+        job = {**self.job, "requirements_unconfirmed": True, "status": "unverified"}
+        with patch("collector.cli.collect", return_value=[job]):
+            self.assertEqual(cli.scan(self.db, "Augury"), 0)
+        stored = self.db.execute("SELECT score,eligible,status,exclusion_reason FROM jobs").fetchone()
+        self.assertGreaterEqual(stored['score'], 70)
+        self.assertEqual(stored['eligible'], 0)
+        self.assertEqual(stored['status'], 'unverified')
+        self.assertIn('בדיקה ידנית', stored['exclusion_reason'])
+
     def test_successful_full_api_scan_marks_missing_jobs_closed(self):
         self.save()
         with patch("collector.cli.collect", return_value=[]):
