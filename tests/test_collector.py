@@ -68,6 +68,11 @@ class ScoringTests(unittest.TestCase):
         self.assertEqual(result["exclusion_reason"], "תפקיד בכיר או ניהולי")
         self.assertTrue(self.score(title="Integration Engineer", description=DESCRIPTION + " Work with the team leader.")["eligible"])
 
+    def test_hardware_tenure_is_not_hidden_by_a_lower_leadership_requirement(self):
+        result = self.score(description="Integration testing.\n6+ years in hardware design and failure analysis; minimum 2 years in a leadership role- Must.")
+        self.assertEqual(result["experience"], "לפחות 6 שנות ניסיון")
+        self.assertFalse(result["eligible"])
+
     def test_unknown_experience_not_assumed_entry(self):
         result = self.score(description="Hardware testing and Python")
         self.assertEqual(result["experience"], "לא צוין בבירור")

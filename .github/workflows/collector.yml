@@ -10,7 +10,7 @@ on:
       command:
         description: Operation
         type: choice
-        options: [scan, scan-and-expand, scan-and-expand-five, check, audit, digest-preview, digest-send]
+        options: [scan, scan-and-expand, scan-and-expand-five, check, audit, probe-sources, digest-preview, digest-send]
         default: scan
 
 permissions:
@@ -49,6 +49,7 @@ jobs:
             scheduled-scan) python -m collector.cloud scheduled-scan ;;
             check) python -m collector.cloud check ;;
             audit) python -m collector.cloud audit ;;
+            probe-sources) python -m collector.cloud probe-sources ;;
             digest-preview) python -m collector.cloud digest ;;
             digest-send) python -m collector.cloud digest --send ;;
             *) exit 2 ;;

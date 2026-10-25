@@ -115,6 +115,7 @@ def main():
     scan.add_argument("--limit", type=int, default=20)
     commands.add_parser("scheduled-scan")
     commands.add_parser("audit")
+    commands.add_parser("probe-sources")
     digest = commands.add_parser("digest")
     digest.add_argument("--send", action="store_true")
     migrate = commands.add_parser("migrate")
@@ -156,6 +157,10 @@ def main():
                 db = connect(Path(folder) / "worker.sqlite")
                 try:
                     restore(db, remote)
+                    if args.command == "probe-sources":
+                        from .probe import report
+                        report(db)
+                        return 0
                     if args.command == "audit":
                         from .audit import report
                         report(db)

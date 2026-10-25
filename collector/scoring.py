@@ -23,7 +23,7 @@ def assess(title, description, location, company):
     mandatory_years, preferred_years = [], []
     clauses = re.split(r"[\n;•]|(?<=[.!?])\s+", duties)
     for clause in clauses:
-        matches = re.findall(r"(\d+)\s*(?:[-–]\s*(\d+))?\s*\+?\s*(?:years?|yrs?)(?:['’]s?)?", clause) if re.search(r"experience|expertise|minimum|at least|hands.on", clause) else []
+        matches = re.findall(r"(\d+)\s*(?:[-–]\s*(\d+))?\s*\+?\s*(?:years?|yrs?)(?:['’]s?)?", clause) if re.search(r"experience|expertise|minimum|at least|hands.on|years?\s+in\s+(?:hardware|software|engineering|verification|validation|failure analysis)", clause) else []
         matches += re.findall(r"(\d+)\s*(?:[-–]\s*(\d+))?\s*\+?\s*שנות ניסיון", clause)
         for low, _ in matches:
             # A stated minimum is treated as required unless the local clause explicitly says otherwise.
