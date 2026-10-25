@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 const config: NextConfig = {
   poweredByHeader: false,
+  devIndicators: process.env.OFIR_E2E === "1" ? false : undefined,
   outputFileTracingExcludes: {
     "/*": ["./.local/**", "./docs/**", "./tests/**", "./supabase/**"],
   },

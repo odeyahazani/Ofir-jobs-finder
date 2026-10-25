@@ -17,6 +17,7 @@ test("only verified eligible jobs are recommended; all source states remain visi
 test("feedback, familiarity, application state and notes persist after reload", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "לפרטים ולסימון" }).click();
+  await page.getByRole("tab", { name: "המעקב שלי" }).click();
   await page.getByRole("combobox", { name: "מידת ההתאמה בעיניי" }).selectOption("yes");
   await expect(page.getByRole("combobox", { name: "מידת ההתאמה בעיניי" })).toBeEnabled();
   await page.getByRole("combobox", { name: "מצב מועמדות" }).selectOption("applied");
@@ -25,10 +26,11 @@ test("feedback, familiarity, application state and notes persist after reload", 
   await expect(page.getByRole("checkbox")).toBeEnabled();
   await page.getByRole("textbox", { name: "הערה אישית" }).fill("לחזור למגייסת בשבוע הבא");
   await page.getByRole("button", { name: "שמירת הערה" }).click();
-  await expect(page.getByRole("button", { name: "שמירת הערה" })).toBeEnabled();
+  await expect(page.getByRole("dialog").getByRole("status")).toHaveText("השינויים נשמרו");
   await page.reload();
   await page.getByRole("button", { name: "כל המשרות", exact: true }).click();
   await page.getByRole("button", { name: "TEST ONLY · Junior Integration Engineer 0", exact: true }).click();
+  await page.getByRole("tab", { name: "המעקב שלי" }).click();
   await expect(page.getByRole("combobox", { name: "מידת ההתאמה בעיניי" })).toHaveValue("yes");
   await expect(page.getByRole("combobox", { name: "מצב מועמדות" })).toHaveValue("applied");
   await expect(page.getByRole("checkbox")).toBeChecked();
@@ -119,11 +121,12 @@ test("a rejected feedback save restores the previous checkbox state and reports 
   await page.goto("/");
   await page.getByRole("button", { name: "כל המשרות", exact: true }).click();
   await page.getByRole("button", { name: "TEST ONLY · Junior Integration Engineer 0", exact: true }).click();
+  await page.getByRole("tab", { name: "המעקב שלי" }).click();
   const checkbox = page.getByRole("checkbox", { name: "המשרה כבר מוכרת לי" });
   const initial = await checkbox.isChecked();
   await page.route("**/api/jobs/*", route => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "בדיקת כשל שמירה" }) }));
   await checkbox.click();
-  await expect(page.getByRole("dialog").getByRole("alert")).toHaveText("בדיקת כשל שמירה");
+  await expect(page.getByRole("dialog").getByRole("alert")).toContainText("בדיקת כשל שמירה");
   if (initial) await expect(checkbox).toBeChecked(); else await expect(checkbox).not.toBeChecked();
 });
 
@@ -154,7 +157,7 @@ test("quick actions persist, recover after failure, and retain application histo
 
 test("redesign remains usable at all target sizes with real controls and screenshots", async ({ page }) => {
   const fs = await import("node:fs/promises");
-  const folder = "/tmp/artifacts/ofir-redesign";
+  const folder = "/tmp/artifacts/ofir-ux-refresh";
   await fs.mkdir(folder, { recursive: true });
   for (const [width,height] of [[1440,900],[1280,800],[1024,768],[768,1024],[390,844]]) {
     await page.setViewportSize({width,height});
@@ -165,8 +168,9 @@ test("redesign remains usable at all target sizes with real controls and screens
     await expect(first).toBeVisible();
     if (width >= 1024) expect((await first.boundingBox())!.y).toBeLessThan(450);
     await page.screenshot({ path: `${folder}/opportunities-${width}.png`, fullPage: true });
-    await first.getByRole("button", { name: "לפרטים ולסימון" }).click();
+    await page.getByRole("button", { name: "TEST ONLY · Junior Integration Engineer 0", exact: true }).click();
     await expect(page.getByRole("dialog")).toBeVisible();
+    await expect(page.locator(".detail-panel")).toHaveCSS("opacity", "1");
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
     if (width === 390 || width === 1440) await page.screenshot({ path: `${folder}/details-${width}.png` });
     await page.keyboard.press("Escape");
@@ -176,4 +180,67 @@ test("redesign remains usable at all target sizes with real controls and screens
       if (width === 390 || width === 1440) await page.screenshot({ path: `${folder}/${slug}-${width}.png`, fullPage: true });
     }
   }
+});
+
+test("outside click closes native dialog, inside clicks and drags do not, and focus returns", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "כל המשרות", exact: true }).click();
+  const opener = page.getByRole("button", { name: "TEST ONLY · Junior Integration Engineer 0", exact: true });
+  await opener.click();
+  const panel = page.locator(".detail-panel");
+  await panel.locator("h2").click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  const box = (await panel.boundingBox())!;
+  const outside = { x: box.x + box.width + 50, y: 160 };
+  await page.mouse.move(box.x + 40, box.y + 120);
+  await page.mouse.down();
+  await page.mouse.move(outside.x, outside.y);
+  await page.mouse.up();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.mouse.click(outside.x, outside.y);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(opener).toBeFocused();
+  expect(await page.evaluate(() => document.body.style.overflow)).not.toBe("hidden");
+});
+
+test("notes remain drafts across dismissal, tab keyboard navigation and job navigation work", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "כל המשרות", exact: true }).click();
+  const opener = page.getByRole("button", { name: "TEST ONLY · Junior Integration Engineer 0", exact: true });
+  await opener.click();
+  await page.getByRole("tab", { name: "תיאור המשרה", exact: true }).focus();
+  await page.keyboard.press("ArrowLeft");
+  await expect(page.getByRole("tab", { name: "התאמה ופערים", exact: true })).toBeFocused();
+  await page.keyboard.press("End");
+  await expect(page.getByRole("tab", { name: "המעקב שלי", exact: true })).toBeFocused();
+  await page.getByRole("textbox", { name: "הערה אישית" }).fill("טיוטה שלא נשמרה בבדיקה");
+  await page.keyboard.press("Escape");
+  await opener.click();
+  await page.getByRole("tab", { name: "המעקב שלי" }).click();
+  await expect(page.getByRole("textbox", { name: "הערה אישית" })).toHaveValue("טיוטה שלא נשמרה בבדיקה");
+  await page.getByRole("button", { name: "המשרה הקודמת" }).click();
+  await expect(page.getByRole("dialog").getByRole("heading", { level: 2 })).not.toHaveText("TEST ONLY · Junior Integration Engineer 0");
+  await page.getByRole("button", { name: "המשרה הבאה" }).click();
+  await expect(page.getByRole("textbox", { name: "הערה אישית" })).toHaveValue("טיוטה שלא נשמרה בבדיקה");
+  await page.keyboard.press("Escape");
+});
+
+test("long descriptions scroll independently with visible actions and keyboard focus contained", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "כל המשרות", exact: true }).click();
+  await page.getByRole("button", { name: "TEST ONLY · Junior Integration Engineer 0", exact: true }).click();
+  const scroll = page.locator(".detail-scroll");
+  expect(await scroll.evaluate(element => element.scrollHeight > element.clientHeight)).toBeTruthy();
+  await scroll.evaluate(element => { element.scrollTop = element.scrollHeight; });
+  await expect(page.getByRole("dialog").getByRole("link", { name: "למשרה באתר החברה" })).toBeInViewport();
+  await expect(page.getByRole("button", { name: "סגירה", exact: true })).toBeInViewport();
+  await page.getByRole("button", { name: "סגירה", exact: true }).focus();
+  for (let index = 0; index < 14; index++) {
+    await page.keyboard.press("Tab");
+    expect(await page.evaluate(() => !!document.activeElement?.closest("dialog"))).toBeTruthy();
+  }
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
 });
