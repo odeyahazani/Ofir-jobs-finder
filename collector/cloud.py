@@ -159,7 +159,7 @@ def main():
                     restore(db, remote)
                     if args.command == "probe-sources":
                         from .probe import report
-                        report(db)
+                        report(db, output=Path('.local/source-probe/report.json'))
                         return 0
                     if args.command == "audit":
                         from .audit import report

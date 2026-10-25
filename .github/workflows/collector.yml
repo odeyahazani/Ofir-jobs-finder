@@ -54,3 +54,12 @@ jobs:
             digest-send) python -m collector.cloud digest --send ;;
             *) exit 2 ;;
           esac
+      - name: Save career page review
+        if: inputs.command == 'probe-sources'
+        uses: actions/upload-artifact@v6
+        with:
+          name: career-page-review
+          path: .local/source-probe/report.json
+          include-hidden-files: true
+          retention-days: 3
+          if-no-files-found: error
