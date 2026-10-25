@@ -55,9 +55,35 @@ test("mutation rejects cross-origin requests, invalid fields and missing jobs", 
 test("mobile layout has no horizontal overflow", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
+  await expect(page.getByRole("combobox", { name: "מיקום המשרה" })).toHaveValue("israel");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
   await page.getByRole("button", { name: /חברות במעקב/ }).click();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+});
+
+test("location defaults to Israel and keeps foreign and unclear records behind explicit filters", async ({ page }) => {
+  await page.goto("/");
+  const location = page.getByRole("combobox", { name: "מיקום המשרה" });
+  await expect(location).toHaveValue("israel");
+  await expect(page.getByRole("button", { name: "TEST ONLY · test-abroad", exact: true })).toHaveCount(0);
+  await page.getByRole("textbox", { name: "חיפוש משרות" }).fill("NO MATCH LOCATION TEST");
+  await page.getByRole("button", { name: "כל המשרות במיקום שנבחר", exact: true }).click();
+  await expect(location).toHaveValue("israel");
+  await expect(page.getByRole("textbox", { name: "חיפוש משרות" })).toHaveValue("");
+  await expect(page.locator(".job-card")).toHaveCount(3);
+  await location.selectOption("abroad");
+  await expect(page.locator(".job-card")).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "TEST ONLY · test-abroad", exact: true })).toBeVisible();
+  await location.selectOption("unknown");
+  await expect(page.locator(".job-card")).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "TEST ONLY · test-unknown", exact: true })).toBeVisible();
+  await location.selectOption("all");
+  await expect(page.locator(".job-card")).toHaveCount(5);
+  await page.getByRole("button", { name: "מומלצות", exact: true }).click();
+  await expect(page.getByRole("button", { name: "TEST ONLY · test-abroad", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "TEST ONLY · test-unknown", exact: true })).toHaveCount(0);
+  await page.reload();
+  await expect(location).toHaveValue("israel");
 });
 
 test("findings import previews, deduplicates and preserves unverified status across reload", async ({ page }) => {

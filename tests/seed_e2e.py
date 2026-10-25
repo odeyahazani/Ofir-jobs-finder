@@ -24,4 +24,11 @@ with db:
                "description": "Junior optical integration and validation engineer. Python and MATLAB. Laboratory experiments and signal processing. 0-1 years of experience.",
                "location": "Haifa, Israel", "url": f"https://example.com/test-only/{index}", "status": status}
         save_job(db, company["id"], job, assess(job["title"], job["description"], job["location"], company))
+    for source_id, location in [("test-abroad", "San Jose, California, United States"), ("test-unknown", "Remote")]:
+        job = {"source_id": source_id, "title": f"TEST ONLY · {source_id}",
+               "description": "Junior integration engineer, Python, MATLAB and laboratory experiments.",
+               "location": location, "url": f"https://example.com/{source_id}", "status": "open"}
+        save_job(db, company["id"], job, assess(job["title"], job["description"], job["location"], company))
+        # Simulate legacy/imported scores: recommendations must still enforce Israeli location.
+        db.execute("UPDATE jobs SET eligible=1,score=95 WHERE source_id=?", (source_id,))
 db.close()
