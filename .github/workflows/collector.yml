@@ -10,7 +10,7 @@ on:
       command:
         description: Operation
         type: choice
-        options: [scan, scan-and-expand, check, audit, digest-preview, digest-send]
+        options: [scan, scan-and-expand, scan-and-expand-five, check, audit, digest-preview, digest-send]
         default: scan
 
 permissions:
@@ -45,6 +45,7 @@ jobs:
           case "$OPERATION" in
             scan) python -m collector.cloud scan ;;
             scan-and-expand) python -m collector.cloud scan --expand-by 1 ;;
+            scan-and-expand-five) python -m collector.cloud scan --expand-by 5 ;;
             scheduled-scan) python -m collector.cloud scheduled-scan ;;
             check) python -m collector.cloud check ;;
             audit) python -m collector.cloud audit ;;
