@@ -4,12 +4,26 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import MagicMock
-from collector.probe import ats_references, page_evidence, report
+from collector.probe import ats_references, page_evidence, report, html_document, detail_candidates
 from collector.sources import SourceError
 from collector.store import connect, seed
 
 
 class ProbeTests(unittest.TestCase):
+    def test_site_builder_json_uses_only_explicit_content(self):
+        import json
+        self.assertEqual(html_document(json.dumps({'css': 'do not interpret as jobs', 'content': '<h1>Jobs</h1>'})), '<h1>Jobs</h1>')
+        for value in ['{invalid', '{"css":"Only styling"}']:
+            with self.assertRaises(SourceError): html_document(value)
+
+    def test_detail_probe_follows_only_observed_official_job_links_with_a_small_budget(self):
+        document = ''.join(f'<a href="/careers/open-positions/{i}.AAA/">Engineer</a>' for i in range(10))
+        document += '<a href="/careers/open-positions/Z.TEST/">R&amp;D Integrator</a><a href="https://evil.example/careers/open-positions/A.AAA/">Test</a><a href="/careers/open-positions/A.AAA/?token=private">Test</a>'
+        urls = detail_candidates(document, 'https://www.camtek.com/careers/open-positions/')
+        self.assertEqual(len(urls), 3)
+        self.assertEqual(urls[0], 'https://www.camtek.com/careers/open-positions/Z.TEST/')
+        self.assertTrue(all('?' not in url and url.startswith('https://www.camtek.com/') for url in urls))
+
     def test_reports_only_supported_public_board_paths_without_tokens(self):
         document = '''<iframe src="https://www.comeet.com/jobs/example/AB.001/?token=private"></iframe>
         <a href="https://job-boards.greenhouse.io/example/jobs/123?secret=private">Jobs</a>

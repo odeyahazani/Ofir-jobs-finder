@@ -10,6 +10,50 @@ from .sources import plain
 PRIORITIES = ('CardiacSense', 'ColorChip', 'Rapid Medical', 'Camtek', 'Prisma Photonics')
 
 
+def html_document(document):
+    # Some official site builders respond to Accept: application/json with page data.
+    if document.lstrip().startswith('{'):
+        try:
+            payload = json.loads(document)
+        except ValueError:
+            raise SourceError('unsupported', 'Career page JSON is invalid') from None
+        if not isinstance(payload, dict) or not isinstance(payload.get('content'), str):
+            raise SourceError('unsupported', 'Career page JSON has no supported HTML content field')
+        return payload['content']
+    return document
+
+
+def detail_candidates(document, base_url):
+    class Links(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.current = None
+            self.links = []
+        def handle_starttag(self, tag, attrs):
+            if tag == 'a': self.current = [dict(attrs).get('href', ''), []]
+        def handle_data(self, value):
+            if self.current is not None: self.current[1].append(value)
+        def handle_endtag(self, tag):
+            if tag == 'a' and self.current is not None:
+                self.links.append((self.current[0], ' '.join(self.current[1])))
+                self.current = None
+    parser = Links()
+    parser.feed(document)
+    paths = {'www.camtek.com': r'/careers/open-positions/[A-Za-z0-9.-]+/',
+             'www.prismaphotonics.com': r'/job/[a-z0-9-]+/'}
+    host = urlsplit(base_url).hostname
+    if host not in paths: return []
+    candidates = {}
+    for href, label in parser.links:
+        url = urlsplit(urljoin(base_url, href))
+        if url.scheme != 'https' or url.hostname != host or url.username or url.password or url.port not in (None, 443) or url.query:
+            continue
+        if re.fullmatch(paths[host], url.path):
+            priority = 0 if re.search('integrat|validat|system|test|אינטגר|בדיק', label, re.I) else 1
+            candidates['https://' + host + url.path] = (priority, label.strip()[:300])
+    return sorted(candidates, key=lambda url: (candidates[url][0], url))[:3]
+
+
 def ats_references(document):
     # Report public board paths only: never echo query strings, tokens or embedded credentials.
     references = set()
@@ -64,10 +108,19 @@ def report(db, client_factory=Client, output=None):
         if not company['career_url']:
             print(json.dumps({'company': name, 'status': 'missing_career_url'})); continue
         try:
-            document = client_factory(company).get(company['career_url'])
+            client = client_factory(company)
+            document = html_document(client.get(company['career_url']))
             records, _ = postings(document)
             result = {'company': name, 'status': 'page_readable', 'jobposting_records_on_page': len(records), 'linked_public_boards': ats_references(document)}
-            evidence.append({**result, 'career_url': company['career_url'], **page_evidence(document, company['career_url'])})
+            details = []
+            for url in detail_candidates(document, company['career_url']):
+                try:
+                    detail = html_document(client.get(url))
+                    details.append({'url': url, 'status': 'page_readable', **page_evidence(detail, url)})
+                except SourceError as error:
+                    details.append({'url': url, 'status': error.status, 'error': error.message})
+            result['detail_pages_read'] = sum(d['status'] == 'page_readable' for d in details)
+            evidence.append({**result, 'career_url': company['career_url'], **page_evidence(document, company['career_url']), 'detail_pages': details})
         except SourceError as error:
             result = {'company': name, 'status': error.status, 'error': error.message}
             evidence.append(result)
