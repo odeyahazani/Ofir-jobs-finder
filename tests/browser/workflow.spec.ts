@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 
 test("only verified eligible jobs are recommended; all source states remain visible", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: /היי אופיר/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "הזדמנויות", exact: true })).toBeVisible();
   await expect(page.locator(".job-card")).toHaveCount(1);
   await expect(page.getByText("אומתה במקור", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "כל המשרות", exact: true }).click();
@@ -34,8 +34,8 @@ test("feedback, familiarity, application state and notes persist after reload", 
   await expect(page.getByRole("checkbox")).toBeChecked();
   await expect(page.getByRole("textbox", { name: "הערה אישית" })).toHaveValue("לחזור למגייסת בשבוע הבא");
   await page.getByRole("button", { name: "סגירה" }).click();
-  await page.getByRole("button", { name: "המועמדויות שלי", exact: true }).click();
-  await expect(page.locator(".job-card")).toHaveCount(1);
+  await page.getByRole("button", { name: /המועמדויות שלי/ }).click();
+  await expect(page.locator(".application-table tbody tr")).toHaveCount(1);
 });
 
 test("mutation rejects cross-origin requests, invalid fields and missing jobs", async ({ page, request }) => {
@@ -125,4 +125,55 @@ test("a rejected feedback save restores the previous checkbox state and reports 
   await checkbox.click();
   await expect(page.getByRole("dialog").getByRole("alert")).toHaveText("בדיקת כשל שמירה");
   if (initial) await expect(checkbox).toBeChecked(); else await expect(checkbox).not.toBeChecked();
+});
+
+test("quick actions persist, recover after failure, and retain application history", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "כל המשרות", exact: true }).click();
+  const card = page.locator(".job-card").filter({ has: page.getByRole("button", { name: "TEST ONLY · Junior Integration Engineer 1", exact: true }) });
+  await card.getByRole("button", { name: "שמירה להמשך", exact: true }).click();
+  await expect(card.getByRole("button", { name: "שמורה", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(card.getByRole("button", { name: "שמורה", exact: true })).toBeEnabled();
+  await page.reload();
+  await page.getByRole("button", { name: "כל המשרות", exact: true }).click();
+  await expect(card.getByRole("button", { name: "שמורה", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.route("**/api/jobs/*", route => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "שמירה נכשלה בבדיקה" }) }));
+  await card.getByRole("button", { name: "מוכרת לי", exact: true }).click();
+  await expect(page.locator("main").getByRole("alert")).toContainText("שמירה נכשלה בבדיקה");
+  await expect(card.getByRole("button", { name: "מוכרת לי", exact: true })).toHaveAttribute("aria-pressed", "false");
+  await page.unroute("**/api/jobs/*");
+  await card.getByRole("button", { name: "מוכרת לי", exact: true }).click();
+  await expect(card.getByRole("button", { name: "מוכרת לי", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(card.getByRole("button", { name: "מוכרת לי", exact: true })).toBeEnabled();
+  await card.getByRole("button", { name: "לפרטים ולסימון" }).click();
+  await expect(page.getByRole("dialog").getByRole("link", { name: "בדיקת המשרה במקור" })).toHaveAttribute("href", "https://example.com/test-only/1");
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(card.getByRole("button", { name: "לפרטים ולסימון" })).toBeFocused();
+});
+
+test("redesign remains usable at all target sizes with real controls and screenshots", async ({ page }) => {
+  const fs = await import("node:fs/promises");
+  const folder = "/tmp/artifacts/ofir-redesign";
+  await fs.mkdir(folder, { recursive: true });
+  for (const [width,height] of [[1440,900],[1280,800],[1024,768],[768,1024],[390,844]]) {
+    await page.setViewportSize({width,height});
+    await page.goto("/");
+    await page.getByRole("button", { name: "כל המשרות", exact: true }).click();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+    const first = page.locator(".job-card").first();
+    await expect(first).toBeVisible();
+    if (width >= 1024) expect((await first.boundingBox())!.y).toBeLessThan(450);
+    await page.screenshot({ path: `${folder}/opportunities-${width}.png`, fullPage: true });
+    await first.getByRole("button", { name: "לפרטים ולסימון" }).click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+    if (width === 390 || width === 1440) await page.screenshot({ path: `${folder}/details-${width}.png` });
+    await page.keyboard.press("Escape");
+    for (const [name,slug] of [["חברות במעקב","companies"],["המועמדויות שלי","applications"],["ייבוא ממצאים","import"]]) {
+      await page.getByRole("button", { name: new RegExp(name) }).click();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+      if (width === 390 || width === 1440) await page.screenshot({ path: `${folder}/${slug}-${width}.png`, fullPage: true });
+    }
+  }
 });

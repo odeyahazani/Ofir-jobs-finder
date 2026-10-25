@@ -17,7 +17,7 @@ export function MonitorToggle({ company }: { company: Company }) {
     } catch (e) { setError(e instanceof Error ? e.message : "השינוי לא נשמר"); }
     finally { setBusy(false); }
   }
-  return <div className="monitor-control"><label><input type="checkbox" checked={enabled} disabled={busy || !company.career_url} aria-label={`מעקב אחר ${company.name}`} onChange={e => change(e.target.checked)} />לכלול בסריקות</label>{error && <small role="alert">{error}</small>}</div>;
+  return <div className="monitor-control"><label><input type="checkbox" checked={enabled} disabled={busy || !company.career_url} aria-label={`מעקב אחר ${company.name}`} onChange={e => change(e.target.checked)} />לכלול בסריקות</label>{!company.career_url && <small className="subtle">דרוש קישור קריירה להפעלת מעקב</small>}{busy && <span role="status" className="subtle">מעדכן…</span>}{error && <small role="alert">{error}</small>}</div>;
 }
 
 export default function ImportPanel({ discoveries, available }: { discoveries: Discovery[]; available: boolean }) {
@@ -40,17 +40,17 @@ export default function ImportPanel({ discoveries, available }: { discoveries: D
   }
   return <section className="content-panel import-panel"><div className="section-heading"><div><h2>מגדילים את המאגר</h2><p className="section-description">ממצאים מהחיפוש בצ׳אט או מחיפוש עצמאי, עם אימות לפני המלצה.</p></div></div>
     {!available && <div className="notice">חיבור ייבוא הממצאים עדיין לא הושלם. אפשר להמשיך לצפות במשרות ובחברות הקיימות.</div>}
-    <div className="import-body"><p>הדביקו JSON או העלו CSV/JSON. חברות חדשות מתווספות למאגר; אפשר להפעיל להן מעקב במסך החברות. משרות שמגיעות מבחוץ נשמרות כממתינות לאימות.</p>
+    <div className="import-body"><ol className="import-steps" aria-label="שלבי הייבוא"><li aria-current={!preview && !result ? "step" : undefined}>1 · הוספת נתונים</li><li aria-current={preview ? "step" : undefined}>2 · בדיקה ותצוגה מקדימה</li><li aria-current={result ? "step" : undefined}>3 · אישור ותוצאה</li></ol><p>בחרו קובץ או הדביקו ממצאים. לפני השמירה תוכלו לבדוק מה יתווסף. ממצאי משרות נשמרים כממתינים לאימות.</p>
     <label className="file-input">בחירת קובץ<input type="file" accept=".json,.csv,application/json,text/csv" aria-label="בחירת קובץ ממצאים" disabled={!available || busy} onChange={async e => {
       const file = e.target.files?.[0]; if (!file) return;
-      if (file.size > 500_000) { setPreview(null); setError("הקובץ גדול מדי"); return; }
+      if (file.size > 500_000) { setInput(""); setPreview(null); setError("הקובץ גדול מדי"); return; }
       setInput(await file.text()); setPreview(null); setError("");
     }} /></label>
-    <label>תוכן הממצאים<textarea dir="ltr" aria-label="תוכן הממצאים" value={input} maxLength={500_000} disabled={!available || busy} onChange={e => { setInput(e.target.value); setPreview(null); }} placeholder={'{"companies": [], "jobs": []}'} /></label>
+    <label>תוכן הממצאים<textarea dir="ltr" aria-label="תוכן הממצאים" aria-invalid={!!error} aria-describedby={error ? "import-error" : undefined} value={input} maxLength={500_000} disabled={!available || busy} onChange={e => { setInput(e.target.value); setPreview(null); }} placeholder={'{"companies": [], "jobs": []}'} /></label>
     <details><summary>מה צריך להופיע בקובץ?</summary><p dir="auto">ב־JSON: מערך companies עם name, career_url, location, notes; ומערך jobs עם company, title, url, location, notes. ב־CSV: כותרות kind,company,career_url,title,url,location,notes, כאשר kind הוא company או job.</p><p>שם חברה וקישור קריירה עוזרים לסורק לבדוק אותה. משרה חייבת לכלול חברה, שם וקישור ספציפי. תאריך פרסום וציון אינם מוסקים מטקסט מיובא.</p></details>
-    <button className="secondary-button" disabled={!available || busy || !input.trim()} onClick={inspect}>בדיקת הממצאים לפני ייבוא</button>
+    <button className="primary-button" disabled={!available || busy || !input.trim()} onClick={inspect}>בדיקת הממצאים לפני ייבוא</button>
     {preview && <div className="import-preview"><strong>ייבוא של {preview.companies.length} חברות ו־{preview.jobs.length} ממצאי משרות</strong><ul>{preview.companies.map((c,i) => <li key={`c${i}`}>{c.name} · {c.career_url || "דרוש קישור קריירה"}</li>)}{preview.jobs.map((j,i) => <li key={`j${i}`}>{j.company} · {j.title}</li>)}</ul><button className="primary-button" disabled={busy} onClick={save}>{busy ? "מייבא…" : "אישור ייבוא למאגר"}</button></div>}
-    {error && <p role="alert" className="error">{error}</p>}{result && <p role="status" className="notice">{result}</p>}
+    {error && <p id="import-error" role="alert" className="error">{error}</p>}{result && <p role="status" className="notice">{result}</p>}
     <h3>ממצאי משרות שיובאו <span>({discoveries.length})</span></h3>
     {!discoveries.length && <p className="subtle">עדיין לא יובאו ממצאים חיצוניים.</p>}
     {discoveries.map(d => <article className="discovery-row" key={d.id}><strong dir="auto">{d.company_name} · {d.title}</strong><span className={`source-badge ${d.status === "linked" ? "ok" : "pending"}`}>{d.status === "linked" ? "קושרה למשרה במאגר" : "ממתינה לאימות"}</span><p>{d.last_result}</p><a href={d.url} target="_blank" rel="noreferrer">פתיחת המקור שצורף</a></article>)}
