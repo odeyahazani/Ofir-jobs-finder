@@ -12,7 +12,7 @@ from collector.store import connect, seed, save_job
 from collector.scoring import assess
 from collector import cli
 from scripts.build_supabase_setup import generate
-from scripts.export_cloud_bootstrap import export
+from scripts.export_cloud_bootstrap import export, batch_payload, data_statement
 
 
 class CloudTests(unittest.TestCase):
@@ -40,12 +40,41 @@ class CloudTests(unittest.TestCase):
     def test_export_provides_a_private_data_only_file_without_function_definitions(self):
         self.job()
         target = Path(self.temp.name) / "transfer.sql"
-        export(Path(self.temp.name) / "test.sqlite", target)
+        parts = export(Path(self.temp.name) / "test.sqlite", target)
         data = target.with_name("transfer-data-only.sql").read_text()
         self.assertNotIn("CREATE OR REPLACE FUNCTION", data)
         self.assertIn("SELECT public.ofir_sync($ofir_snapshot$", data)
         self.assertTrue(data.rstrip().endswith("COMMIT;"))
         self.assertEqual(target.stat().st_mode & 0o777, 0o600)
+        manifest = json.loads(target.with_name("transfer-parts.json").read_text())
+        self.assertEqual([part.name for part in parts], [entry["file"] for entry in manifest])
+        self.assertEqual(len(parts), 1)
+        self.assertEqual(manifest[0]["records"]["jobs"], 1)
+        for part, entry in zip(parts, manifest):
+            self.assertEqual(part.stat().st_size, entry["bytes"])
+            self.assertLessEqual(entry["bytes"], 700_000)
+            self.assertEqual(part.stat().st_mode & 0o777, 0o600)
+            self.assertNotIn("CREATE OR REPLACE FUNCTION", part.read_text())
+
+    def test_sql_editor_parts_bound_utf8_bytes_preserve_every_record_and_keep_dependencies(self):
+        payload = {"companies": [{"id": "c"}], "jobs": [{"id": str(i), "description": "א" * 1500} for i in range(8)], "job_events": [{"job_id": str(i)} for i in range(8)]}
+        batches = batch_payload(payload, max_bytes=9000)
+        self.assertGreater(len(batches), 1)
+        self.assertTrue(all(len(data_statement(part, "999/999").encode()) <= 9000 for part in batches))
+        for table in payload:
+            self.assertEqual([row for part in batches for row in part.get(table, [])], payload[table])
+        seen_companies, seen_jobs = set(), set()
+        for part in batches:
+            seen_companies.update(row["id"] for row in part.get("companies", []))
+            for row in part.get("jobs", []):
+                self.assertIn("c", seen_companies); seen_jobs.add(row["id"])
+            for row in part.get("job_events", []): self.assertIn(row["job_id"], seen_jobs)
+
+    def test_sql_editor_export_rejects_oversized_records_without_truncating_them(self):
+        with self.assertRaisesRegex(ValueError, "single record"):
+            batch_payload({"jobs": [{"description": "x" * 20000}]}, max_bytes=9000)
+        with self.assertRaisesRegex(ValueError, "Unknown snapshot"):
+            batch_payload({"unrecognized": [{"id": "x"}]})
 
     def test_restored_snapshot_retains_feedback_and_event_identity(self):
         self.job()
