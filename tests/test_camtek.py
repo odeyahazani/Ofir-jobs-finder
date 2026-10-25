@@ -49,8 +49,16 @@ class CamtekTests(unittest.TestCase):
         self.assertFalse(assess(job['title'], job['description'], job['location'], {'notes': 'semiconductor optics'})['eligible'])
 
     def test_missing_markers_metadata_or_wrong_host_are_not_verified(self):
-        for document, url in [(DOCUMENT.replace('Apply Now', 'Closed'), URL), (DOCUMENT.replace('<p>R&amp;D</p>', ''), URL), (DOCUMENT, URL.replace('www.camtek.com', 'evil.example'))]:
+        for document, url in [(DOCUMENT.replace('Apply Now', 'Closed'), URL), (DOCUMENT, URL.replace('www.camtek.com', 'evil.example'))]:
             with self.assertRaises(SourceError): parse_job(document, url)
+
+    def test_ambiguous_metadata_is_preserved_without_guessing_location(self):
+        for document in [DOCUMENT.replace('<p>R&amp;D</p>', ''), DOCUMENT.replace('<p>Migdal Haemek</p>', ''), DOCUMENT.replace('<p>Migdal Haemek</p><p>Full-time</p>', '')]:
+            job = parse_job(document, URL)
+            self.assertEqual(job['location'], 'מיקום לא ידוע')
+            self.assertEqual(job['status'], 'unverified')
+            self.assertFalse(assess(job['title'], job['description'], job['location'], {'notes': 'semiconductor optics'})['eligible'])
+            self.assertIn('Electrical engineering degree', job['description'])
 
     def test_only_observed_detail_links_are_fetched_once(self):
         client = MagicMock()

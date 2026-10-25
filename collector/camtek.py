@@ -30,16 +30,18 @@ def parse_job(document, url):
     # Reviewed pages have title / department / actual location, optionally a work model.
     work_pattern = r'Full[ -]time|Part[ -]time'
     valid = (len(metadata) == 4 and re.fullmatch(work_pattern, metadata[3], re.I)) or (len(metadata) == 3 and not re.fullmatch(work_pattern, metadata[2], re.I))
-    if not valid or len(metadata[0]) > 250:
-        raise SourceError('unsupported', 'Camtek job metadata changed; location cannot be inferred')
+    if not 1 <= len(metadata) <= 4 or not metadata[0] or len(metadata[0]) > 250:
+        raise SourceError('unsupported', 'Camtek job title or metadata structure cannot be extracted')
+    location = metadata[2] if valid else 'מיקום לא ידוע'
+    work_model = metadata[-1] if len(metadata) > 1 and re.fullmatch(work_pattern, metadata[-1], re.I) else 'לא צוין'
     body = '\n'.join(lines[description:end])
     if len(body) < 150 or (requirements is not None and (requirements <= description + 1 or end <= requirements + 1)):
         raise SourceError('unsupported', 'Camtek job description or requirements missing')
     return {'source_id': urlsplit(url).path.strip('/').split('/')[-1], 'title': metadata[0],
-            'location': metadata[2], 'work_model': metadata[3] if len(metadata) == 4 else 'לא צוין', 'url': url, 'description': body,
+            'location': location, 'work_model': work_model, 'url': url, 'description': body,
             'published_at': None, 'updated_at': None,
             'requirements_unconfirmed': requirements is None,
-            'status': 'unverified' if requirements is None else 'open'}
+            'status': 'unverified' if requirements is None or not valid else 'open'}
 
 
 def collect_camtek(company, client):
