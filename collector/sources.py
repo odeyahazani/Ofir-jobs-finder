@@ -239,6 +239,9 @@ def needs_detail(title, description, location, company):
 
 def collect(company, client=None):
     client = client or Client(company)
+    if company.get("name") == "Camtek":
+        from .camtek import collect_camtek
+        return collect_camtek(company, client)
     if company["ats_hint"] == "Greenhouse" and company["ats_identifier"]:
         board = quote(company["ats_identifier"], safe="")
         try:

@@ -12,6 +12,7 @@ def new_sources(db, limit=1):
         company = dict(row)
         notes = company["notes"].lower()
         supported = (company["ats_hint"] == "Greenhouse" and company["ats_identifier"] and re.search(r"https://(job-boards(\.eu)?|boards)\.greenhouse\.io/", company["career_url"])) or (company["ats_hint"] == "Comeet" and re.search(r"https://www\.comeet\.(com|co)/jobs/", company["career_url"]))
+        supported = supported or (company["name"] == "Camtek" and company["career_url"].rstrip("/") == "https://www.camtek.com/careers/open-positions")
         if not supported:
             continue
         ofir = bool(re.search(r"ofir|אופיר", notes))

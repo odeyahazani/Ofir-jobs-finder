@@ -60,7 +60,7 @@ def assess(title, description, location, company):
         reasons.append("התפקיד כולל פעילות מערכתית, ניסויית או בדיקות")
     sector = 10 if re.search(r"medical|medtech|biomedical|healthcare|imaging|מכשור רפואי|medical", company["notes"].lower()) else 8 if re.search(r"optic|photon|sensor|semiconductor|defense|physics|robotic", company["notes"].lower()) else 3
     # No travel-time estimate is inferred from the company's address.
-    geo = 5 if re.search(r"israel|haifa|caesarea|netanya|yokne|herzliya|tel.aviv|חיפה|קיסריה|נתניה|יקנעם|ישראל|הרצליה|תל אביב|בנימינה|אור עקיבא", location, re.I) else 0
+    geo = 5 if re.search(r"israel|haifa|caesarea|netanya|migdal haeme[kq]|מגדל העמק|yokne|herzliya|tel.aviv|חיפה|קיסריה|נתניה|יקנעם|ישראל|הרצליה|תל אביב|בנימינה|אור עקיבא", location, re.I) else 0
     if not geo:
         exclude = exclude or "מיקום בישראל לא אומת"
     gaps.append("זמן נסיעה ברכב ובתחבורה ציבורית טרם נבדק")

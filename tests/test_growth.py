@@ -26,7 +26,7 @@ class GrowthTests(unittest.TestCase):
         for id in ids:
             company = self.db.execute("SELECT * FROM companies WHERE id=?", (id,)).fetchone()
             self.assertEqual(company["enabled"], 0)
-            self.assertIn(company["ats_hint"], {"Greenhouse", "Comeet"})
+            self.assertTrue(company["ats_hint"] in {"Greenhouse", "Comeet"} or (company["name"] == "Camtek" and company["career_url"] == "https://www.camtek.com/careers/open-positions/"))
             self.assertTrue("אופיר" in company["notes"] or "Ofir" in company["notes"])
         self.assertEqual(new_sources(self.db, 0), [])
         with self.assertRaises(ValueError): new_sources(self.db, 50)
