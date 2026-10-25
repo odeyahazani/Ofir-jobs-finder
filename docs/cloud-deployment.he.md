@@ -49,14 +49,14 @@ python -m collector.cloud scan
 
 ## GitHub Actions
 
-קיים workflow ידני בשם **Job collector**. הפעילו רק אחרי הגדרת Repository Settings → Secrets and variables → Actions:
+קיים workflow בשם **Job collector**, עם הפעלה ידנית ותזמון מותנה. הפעילו רק אחרי הגדרת Repository Settings → Secrets and variables → Actions:
 
 - Variables: `NEXT_PUBLIC_SUPABASE_URL`, `APP_URL`.
 - Secrets: `SUPABASE_SERVICE_ROLE_KEY`; להודעות גם `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`.
 
 Actions → Job collector → Run workflow מאפשר check, scan ותצוגה מקדימה של סיכום. `digest-send` שולח הודעה אמיתית. טבלאות Supabase שומרות את מצב ההתראות גם בין מחשבים והרצות. מפתח service_role נותן הרשאות מנהל לאיסוף ולכן נשמר כסוד ב־Actions בלבד. תהליכי האיסוף מסודרים בקבוצת concurrency משותפת; אל תריצו איסוף ידני ממחשב אחר במקביל ל־Actions.
 
-**תזמון אוטומטי עדיין לא הופעל.** נוסיף אותו לאחר בדיקת איסוף ומשלוח אמיתיים. Vercel מארח את האתר; הוא אינו מריץ את Python פעמיים ביום. אפשר להישאר במסלולים חינמיים בהתאם למכסות התקפות של Vercel, Supabase ו־GitHub Actions; אין התחייבות להיעדר עלויות מעבר למכסות.
+**תזמון סריקות זמין אך נשאר כבוי כל עוד `ENABLE_SCHEDULED_SCANS` לא הוגדר ל־`true`.** הוראות ההפעלה וההרחבה נמצאות ב־`docs/growth-setup.he.md`. הודעות טלגרם אינן מופעלות על ידי תזמון הסריקות. Vercel מארח את האתר; הוא אינו מריץ את Python פעמיים ביום. אפשר להישאר במסלולים חינמיים בהתאם למכסות התקפות של Vercel, Supabase ו־GitHub Actions; אין התחייבות להיעדר עלויות מעבר למכסות.
 
 לייבוא מועמדויות לענן:
 

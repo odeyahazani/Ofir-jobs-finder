@@ -1,13 +1,16 @@
 name: Job collector
 
-# Manual until credentials, real login and Telegram delivery have been validated.
+# Scheduled scans remain off until ENABLE_SCHEDULED_SCANS=true is set in repository variables.
 on:
+  schedule:
+    # Both Israeli UTC offsets; the worker runs only in the 08:00 and 17:00 local hours.
+    - cron: '17 5,6,14,15 * * *'
   workflow_dispatch:
     inputs:
       command:
         description: Operation
         type: choice
-        options: [scan, check, digest-preview, digest-send]
+        options: [scan, scan-and-expand, check, digest-preview, digest-send]
         default: scan
 
 permissions:
@@ -20,6 +23,7 @@ concurrency:
 
 jobs:
   collect:
+    if: github.event_name == 'workflow_dispatch' || vars.ENABLE_SCHEDULED_SCANS == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -36,10 +40,12 @@ jobs:
           python-version: "3.12"
       - name: Run selected operation
         env:
-          OPERATION: ${{ inputs.command }}
+          OPERATION: ${{ github.event_name == 'schedule' && 'scheduled-scan' || inputs.command }}
         run: |
           case "$OPERATION" in
             scan) python -m collector.cloud scan ;;
+            scan-and-expand) python -m collector.cloud scan --expand-by 1 ;;
+            scheduled-scan) python -m collector.cloud scheduled-scan ;;
             check) python -m collector.cloud check ;;
             digest-preview) python -m collector.cloud digest ;;
             digest-send) python -m collector.cloud digest --send ;;

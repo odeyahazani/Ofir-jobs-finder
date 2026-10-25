@@ -1,6 +1,7 @@
 import "server-only";
 import { supabase } from "./auth";
-import type { Company, Job } from "./types";
+import type { Company, Job, Discovery } from "./types";
+import type { GrowthPayload } from "./discovery";
 
 function storage() {
   const mode = process.env.OFIR_STORAGE || (process.env.NODE_ENV === "production" ? "supabase" : "sqlite");
@@ -11,7 +12,7 @@ function storage() {
 }
 
 // PostgREST normally caps responses at 1,000 rows; paginate with a stable unique order.
-async function remoteRows(table: "jobs" | "companies") {
+async function remoteRows(table: "jobs" | "companies" | "job_discoveries") {
   const client = await supabase();
   const rows: Record<string, unknown>[] = [];
   let start = 0;
@@ -23,6 +24,28 @@ async function remoteRows(table: "jobs" | "companies") {
     start += data.length;
   }
   throw new Error("כמות הנתונים חורגת מהמגבלה הנתמכת.");
+}
+
+export async function listDiscoveries(): Promise<{ available: boolean; items: Discovery[] }> {
+  if (storage() === "sqlite") return { available: true, items: (await import("./local-db")).listDiscoveries() };
+  const client = await supabase();
+  const { error } = await client.from("job_discoveries").select("id").limit(1);
+  if (error && ["42P01", "PGRST205"].includes(error.code)) return { available: false, items: [] };
+  if (error) throw new Error("לא ניתן לקרוא את הממצאים המיובאים");
+  return { available: true, items: (await remoteRows("job_discoveries")) as Discovery[] };
+}
+export async function importDiscoveries(payload: GrowthPayload) {
+  if (storage() === "sqlite") return (await import("./local-db")).importDiscoveries(payload);
+  const client = await supabase();
+  const { data, error } = await client.rpc("ofir_add_discoveries", { payload });
+  if (error) throw new Error("הייבוא לא הושלם; יש לבדוק שחיבור הייבוא פעיל ושהממצאים תקינים");
+  return data as { companies_added: number; jobs_added: number };
+}
+export async function setMonitor(id: string, enabled: boolean) {
+  if (storage() === "sqlite") return (await import("./local-db")).setMonitor(id, enabled);
+  const client = await supabase();
+  const { error } = await client.rpc("ofir_set_monitor", { target_id: id, monitor: enabled });
+  if (error) throw new Error("המעקב לא עודכן; יש לוודא שקיים קישור קריירה תקין");
 }
 
 export async function listCompanies(): Promise<Company[]> {

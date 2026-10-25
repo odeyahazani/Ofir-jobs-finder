@@ -13,7 +13,7 @@
     "db:init": "python -m collector.cli init",
     "scan": "python -m collector.cli scan",
     "digest": "python -m collector.cli digest",
-    "test": "python -m unittest discover -s tests -v && node --test tests/postgres.test.mjs",
+    "test": "python -m unittest discover -s tests -v && node --test tests/*.test.mjs",
     "test:postgres": "node --test tests/postgres.test.mjs",
     "scan:cloud": "python -m collector.cloud scan",
     "test:e2e": "playwright test"

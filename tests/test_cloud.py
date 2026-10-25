@@ -41,7 +41,7 @@ class CloudTests(unittest.TestCase):
         self.db.execute("UPDATE jobs SET fit='yes',application_status='applied',personal_note='keep this'")
         data = snapshot(self.db, migrate=True)
         remote = MagicMock()
-        remote.rows.side_effect = lambda name: data[name]
+        remote.rows.side_effect = lambda name: data.get(name, [])
         with connect(Path(self.temp.name) / "restored.sqlite") as target:
             restore(target, remote)
             job = target.execute("SELECT * FROM jobs").fetchone()
@@ -89,6 +89,12 @@ class CloudTests(unittest.TestCase):
             remote = Remote()
         remote.request = MagicMock(side_effect=[[{"id": 1}], [{"id": 2}], []])
         self.assertEqual([row["id"] for row in remote.rows("jobs")], [1, 2])
+
+    def test_monitor_controls_page_uses_its_actual_primary_key(self):
+        with patch.dict(os.environ, {"NEXT_PUBLIC_SUPABASE_URL": "https://example.supabase.co", "SUPABASE_SERVICE_ROLE_KEY": "fixture"}): remote = Remote()
+        remote.request = MagicMock(return_value=[])
+        remote.rows("company_monitor_controls")
+        self.assertIn("order=company_id.asc", remote.request.call_args.args[0])
 
     def test_cloud_digest_reserves_before_network_and_finishes_after_confirmation(self):
         self.job()

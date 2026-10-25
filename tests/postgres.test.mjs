@@ -10,7 +10,7 @@ let company;
 const job = { id: "abcdef000000000000000001", company_id: "", source_id: "test-only", title: "TEST ONLY Integration Engineer", location: "Haifa, Israel", work_model: "לא צוין", url: "https://example.com/test-job", description: "Fixture, not a real job", published_at: null, updated_at: null, first_seen_at: stamp, last_seen_at: stamp, last_verified_at: stamp, status: "open", score: 80, breakdown: "{}", reasons: "[]", gaps: "[]", experience: "0–2", eligible: 1, exclusion_reason: null, content_hash: "test-hash", version: 1, fit: "unrated", familiar: 0, application_status: "not_applied", personal_note: "", user_updated_at: null };
 
 async function as(role, email, callback, provider = "google") {
-  await db.query("SELECT set_config('request.jwt.claims',$1,false)", [JSON.stringify(email ? { email, sub: "00000000-0000-0000-0000-000000000001", app_metadata: { provider } } : {})]);
+  await db.query("SELECT set_config('request.jwt.claims',$1,false)", [JSON.stringify(email ? { role, email, sub: "00000000-0000-0000-0000-000000000001", app_metadata: { provider } } : { role })]);
   await db.exec(`SET ROLE ${role}`);
   try { return await callback(); } finally { await db.exec("RESET ROLE"); }
 }
@@ -48,9 +48,9 @@ test("anonymous role has no direct table access and cannot invoke worker operati
 test("all application tables, including the private allowlist, explicitly enable RLS", async () => {
   const result = await db.query(`SELECT n.nspname,c.relname,c.relrowsecurity FROM pg_class c
     JOIN pg_namespace n ON n.oid=c.relnamespace
-    WHERE (n.nspname='public' AND c.relname IN ('companies','jobs','scans','job_events','imports','digest_runs'))
+    WHERE (n.nspname='public' AND c.relname IN ('companies','jobs','scans','job_events','imports','digest_runs','job_discoveries','company_monitor_controls'))
        OR (n.nspname='private' AND c.relname='ofir_owner')`);
-  assert.equal(result.rows.length, 7);
+  assert.equal(result.rows.length, 9);
   assert.ok(result.rows.every(row => row.relrowsecurity));
 });
 
@@ -134,4 +134,80 @@ test("application import is atomic and applies to both existing and future disco
 test("incomplete owner configuration aborts setup without granting access", async () => {
   await assert.rejects(db.query("SELECT private.configure_owner('REPLACE_WITH_OFIR_GOOGLE_EMAIL')"), /Set a valid Google email/);
   assert.equal((await db.query("SELECT email FROM private.ofir_owner")).rows[0].email, owner);
+});
+
+const findings = { companies: [{ name: "TEST ONLY Medical Source", career_url: "https://job-boards.greenhouse.io/test-only", location: "Haifa, Israel", notes: "Medical and optics; Ofir" }], jobs: [{ company: "TEST ONLY Medical Source", title: "TEST ONLY Integration Engineer", url: "https://example.com/discovered-role?utm_source=chat", location: "Haifa", notes: "Found by external search", verified: true, score: 100 }] };
+test("only the owner or trusted worker can import new findings", async () => {
+  await as("anon", null, async () => { await assert.rejects(db.query("SELECT public.ofir_add_discoveries($1)", [findings]), /permission denied/); });
+  await as("authenticated", "other@example.com", async () => { await assert.rejects(db.query("SELECT public.ofir_add_discoveries($1)", [findings]), /Forbidden/); });
+  await as("authenticated", owner, async () => {
+    const result = (await db.query("SELECT public.ofir_add_discoveries($1) AS counts", [findings])).rows[0].counts;
+    assert.equal(result.companies_added, 1);
+    assert.equal(result.jobs_added, 1);
+  });
+});
+test("imported jobs remain unverified and duplicate imports retain their original record", async () => {
+  const first = (await db.query("SELECT * FROM public.job_discoveries")).rows[0];
+  assert.equal(first.status, "pending"); assert.equal(first.linked_job_id, null);
+  assert.equal(first.url, "https://example.com/discovered-role");
+  assert.equal((await db.query("SELECT COUNT(*)::int AS n FROM public.jobs")).rows[0].n, 1);
+  await as("authenticated", owner, async () => {
+    const result = (await db.query("SELECT public.ofir_add_discoveries($1) AS counts", [findings])).rows[0].counts;
+    assert.equal(result.companies_added, 0); assert.equal(result.jobs_added, 0);
+  });
+  assert.equal((await db.query("SELECT added_at FROM public.job_discoveries")).rows[0].added_at, first.added_at);
+});
+test("source activation is explicit and another user cannot change the monitored set", async () => {
+  const c = (await db.query("SELECT * FROM public.companies WHERE name='TEST ONLY Medical Source'")).rows[0];
+  assert.equal(c.enabled, 0); assert.equal(c.ats_hint, "Greenhouse"); assert.equal(c.ats_identifier, "test-only");
+  await as("authenticated", "other@example.com", async () => { await assert.rejects(db.query("SELECT public.ofir_set_monitor($1,true)", [c.id]), /Forbidden/); });
+  await as("authenticated", owner, async () => {
+    await db.query("SELECT public.ofir_set_monitor($1,true)", [c.id]);
+    await assert.rejects(db.query("SELECT public.ofir_enable_sources($1)", [[c.id]]), /permission denied/);
+  });
+  assert.equal((await db.query("SELECT enabled FROM public.companies WHERE id=$1", [c.id])).rows[0].enabled, 1);
+});
+test("an invalid finding aborts the entire import and prevents private URL storage", async () => {
+  await as("authenticated", owner, async () => {
+    const invalid = { companies: [{ name: "MUST NOT BE INSERTED", career_url: "https://example.com/careers" }], jobs: [{ company: "MUST NOT BE INSERTED", title: "Bad URL", url: "https://127.0.0.1/job" }] };
+    await assert.rejects(db.query("SELECT public.ofir_add_discoveries($1)", [invalid]), /public HTTPS/);
+  });
+  assert.equal((await db.query("SELECT * FROM public.companies WHERE name='MUST NOT BE INSERTED'")).rows.length, 0);
+});
+test("an imported finding links only after a matching officially verified record exists", async () => {
+  const c = (await db.query("SELECT * FROM public.companies WHERE name='TEST ONLY Medical Source'")).rows[0];
+  const importedJob = { ...job, id: "abcdef000000000000000009", company_id: c.id, url: "https://example.com/discovered-role", source_id: "new-test-role", status: "unverified", last_verified_at: null };
+  await sync({ jobs: [importedJob] });
+  await as("service_role", null, () => db.query("SELECT public.ofir_link_discoveries()"));
+  assert.equal((await db.query("SELECT status FROM public.job_discoveries")).rows[0].status, "pending");
+  await sync({ jobs: [{ ...importedJob, status: "open", last_verified_at: stamp }] });
+  await as("service_role", null, () => db.query("SELECT public.ofir_link_discoveries()"));
+  assert.equal((await db.query("SELECT status FROM public.job_discoveries")).rows[0].status, "linked");
+});
+test("additive growth upgrade is repeatable and preserves the owner and feedback", async () => {
+  await db.exec(fs.readFileSync("supabase/upgrade-growth.sql", "utf8"));
+  assert.equal((await db.query("SELECT email FROM private.ofir_owner")).rows[0].email, owner);
+  assert.equal((await db.query("SELECT personal_note FROM public.jobs WHERE id=$1", [job.id])).rows[0].personal_note, "keep my note");
+});
+
+test("automatic growth cannot reactivate a company explicitly paused by the owner", async () => {
+  const c = (await db.query("SELECT id FROM public.companies WHERE name='TEST ONLY Medical Source'")).rows[0];
+  await as("authenticated", owner, () => db.query("SELECT public.ofir_set_monitor($1,false)", [c.id]));
+  await as("service_role", null, async () => {
+    const result = (await db.query("SELECT public.ofir_enable_sources($1) AS activated", [[c.id]])).rows[0].activated;
+    assert.deepEqual(result, []);
+  });
+  assert.equal((await db.query("SELECT enabled FROM public.companies WHERE id=$1", [c.id])).rows[0].enabled, 0);
+});
+
+test("snapshot migration carries pending findings and preserves existing cloud monitor preferences", async () => {
+  const c = (await db.query("SELECT id FROM public.companies WHERE name='TEST ONLY Medical Source'")).rows[0];
+  const finding = (await db.query("SELECT * FROM public.job_discoveries LIMIT 1")).rows[0];
+  const data = { ...finding, id: "abcdef000000000000000020", url: "https://example.com/another-discovery", linked_job_id: null, status: "pending" };
+  await sync({ company_monitor_controls: [{ company_id: c.id, opted_out: 0 }], job_discoveries: [data] });
+  await sync({ job_discoveries: [data] });
+  await sync({ job_discoveries: [{ ...finding, status: "pending", linked_job_id: null }] });
+  assert.equal((await db.query("SELECT opted_out FROM public.company_monitor_controls WHERE company_id=$1", [c.id])).rows[0].opted_out, 1);
+  assert.equal((await db.query("SELECT count(*)::int AS n FROM public.job_discoveries WHERE id=$1", [data.id])).rows[0].n, 1);
+  assert.equal((await db.query("SELECT status FROM public.job_discoveries WHERE id=$1", [finding.id])).rows[0].status, "linked");
 });

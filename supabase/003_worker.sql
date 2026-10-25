@@ -1,7 +1,7 @@
 -- Narrow, transaction-safe write operations for the trusted collector only.
 CREATE OR REPLACE FUNCTION public.ofir_sync(payload JSONB)
 RETURNS VOID LANGUAGE plpgsql SET search_path='' AS $$
-DECLARE c public.companies; j public.jobs; s public.scans; e public.job_events; i public.imports; d public.digest_runs;
+DECLARE c public.companies; j public.jobs; s public.scans; e public.job_events; i public.imports; d public.digest_runs; finding JSONB;
 BEGIN
  PERFORM pg_catalog.pg_advisory_xact_lock(4801739);
  FOR c IN SELECT * FROM jsonb_populate_recordset(NULL::public.companies,COALESCE(payload->'companies','[]')) LOOP
@@ -40,6 +40,17 @@ BEGIN
  FOR d IN SELECT * FROM jsonb_populate_recordset(NULL::public.digest_runs,COALESCE(payload->'digest_runs','[]')) LOOP
    INSERT INTO public.digest_runs(day,status,created_at,sent_at) VALUES(d.day,d.status,d.created_at,d.sent_at)
    ON CONFLICT(day) DO NOTHING;
+ END LOOP;
+ FOR finding IN SELECT * FROM jsonb_array_elements(COALESCE(payload->'company_monitor_controls','[]')) LOOP
+   INSERT INTO public.company_monitor_controls SELECT * FROM jsonb_populate_record(NULL::public.company_monitor_controls,finding)
+   ON CONFLICT(company_id) DO NOTHING;
+ END LOOP;
+ FOR finding IN SELECT * FROM jsonb_array_elements(COALESCE(payload->'job_discoveries','[]')) LOOP
+   INSERT INTO public.job_discoveries SELECT * FROM jsonb_populate_record(NULL::public.job_discoveries,finding)
+   ON CONFLICT(url) DO UPDATE SET status=excluded.status,linked_job_id=excluded.linked_job_id,
+    last_checked=excluded.last_checked,last_result=excluded.last_result
+    WHERE excluded.last_checked IS NOT NULL AND (job_discoveries.last_checked IS NULL OR excluded.last_checked>=job_discoveries.last_checked)
+      AND NOT(job_discoveries.status='linked' AND excluded.status='pending');
  END LOOP;
 END;
 $$;

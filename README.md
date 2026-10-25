@@ -6,6 +6,10 @@ Personal Hebrew/RTL job tracker for Ofir Cohen. Next.js 16 + React, Supabase sto
 
 Vercel is supported with `OFIR_STORAGE=supabase` and a Supabase PostgreSQL database protected by RLS. See [step-by-step cloud deployment](docs/cloud-deployment.he.md). Apply `supabase/setup.sql` with the owner email placeholder filled first. The web server uses the signed-in Google user and publishable key; no service-role key is used by the website. The durable collector runs separately with `python -m collector.cloud`, with a manual GitHub Actions workflow provided. Real Google/Supabase/Telegram operation still requires provider settings and credentials. Automatic scheduling is not activated.
 
+## Gradual growth and shared discovery format
+
+The authenticated website now accepts CSV/JSON findings with a preview and an unverified inbox. Users can enable or pause company monitoring. Apply `supabase/upgrade-growth.sql` to an existing installation; it preserves the configured owner and all existing data. See [growth setup](docs/growth-setup.he.md) and [the shared chat-task output format](docs/chat-task-output.he.md). A chat task is not automatically connected by sharing a format. Scheduled cloud scans are gated by the repository variable `ENABLE_SCHEDULED_SCANS=true`; until it is configured, scheduled jobs skip. Monitoring expands by at most one relevant supported source per run, scanning up to 20 of the oldest sources and respecting user opt-outs. No scheduled Telegram messages are enabled by this change.
+
 ## Development
 
 Requirements: Node 24+, npm, Python 3.12+, Linux/macOS. Use the existing checkout; cloud tasks already have an isolated workspace, so do not create a worktree.
@@ -46,7 +50,7 @@ Browser tests use a separate `.local/e2e.sqlite`, test-only job fixtures and por
 
 All 138 rows are retained in `data/companies.json`, including original Active, priority, last-result and check-time metadata. Those values are not trusted as new checks. Eight initial sources are enabled. Source results distinguish pending, success, verified-empty (complete official API/bootstrap list only), blocked, unsupported and error; failures never close existing jobs or become zero-job results.
 
-Greenhouse: documented public board API and application-page check. Comeet: public JSON bootstrap records and per-job validation on the official detail page, with JSON-LD fallback. Spectrum Dynamics: a dedicated public careers/detail-page adapter with application-instruction checks. Other sources can use public JobPosting JSON-LD. Only potentially eligible roles receive extra detail-page requests; other records are retained as unverified/excluded. JavaScript-only or unsupported schemas require another adapter and are explicitly reported as unsupported. HTTP/TLS verification and robots restrictions remain enabled. No scraping behind logins or CAPTCHA bypasses.
+Greenhouse: documented public board API and application-page check. Comeet: public JSON bootstrap records and per-job validation on the official detail page, with JSON-LD fallback. Spectrum Dynamics: a dedicated public careers/detail-page adapter with application-instruction checks. Other sources can use public JobPosting JSON-LD. Only potentially eligible roles receive extra detail-page requests; other records are retained as unverified/excluded. JavaScript-only or unsupported schemas require another adapter and are explicitly reported as unsupported. HTTP/TLS verification and robots restrictions remain enabled. No scraping behind logins or CAPTCHA bypasses. New source URLs reject local/private hosts; the collector validates resolved public addresses. Managed HTTPS-proxy environments may resolve the reviewed seed/ATS hosts through the existing proxy when local DNS is unavailable; arbitrary imported hosts fail closed when public DNS cannot be verified.
 
 The rule-based scorer is deliberately inspectable and conservative; see `collector/scoring.py`. It is not a general natural-language requirements parser. Read the gaps before applying. Academic experience is never described as industrial experience. Publication dates are separate from first seen / source updated / last verified; unknown dates stay unknown. Scores follow the supplied weights but unverified commute and growth information earn no full credit. Only verified active eligible jobs score >=70 appear in recommendations/digests. The All tab exposes excluded, unverified and closed records for review.
 
@@ -74,7 +78,7 @@ On the deployed host, invoke `python -m collector.scheduler` once per minute thr
 * * * * * cd /workspace/Ofir-jobs-finder && /absolute/path/to/python -m collector.scheduler >> /workspace/Ofir-jobs-finder/.local/scheduler.log 2>&1
 ```
 
-The scheduler computes Asia/Jerusalem time itself, runs scans once at 08:00/17:00 and a digest at 18:00, with a 15-minute catch-up window, persisting daily task reservations. It does not catch up after that window or automatically retry failed/uncertain sends. Scheduling is not installed by this repository; verify the host task runner and review its logs after activation. Add log rotation on the deployed host.
+The scheduler computes Asia/Jerusalem time itself, runs scans once at 08:00/17:00 and a digest at 18:00, with a 15-minute catch-up window, persisting daily task reservations. It does not catch up after that window or automatically retry failed/uncertain sends. The local-host scheduler is not installed by this repository; verify the host task runner and review its logs after activation. Add log rotation on the deployed host.
 
 ## Deployment and data
 

@@ -14,8 +14,13 @@ from .scoring import assess, within_age_limit
 from .sources import collect, SourceError
 
 
-def scan(db, company_name=None):
-    companies = db.execute("SELECT * FROM companies WHERE enabled=1" + (" AND name=?" if company_name else ""), (company_name,) if company_name else ()).fetchall()
+def scan(db, company_name=None, limit=None):
+    if limit is not None and not 1 <= limit <= 50:
+        raise ValueError("Scan limit must be between 1 and 50 companies")
+    query = "SELECT * FROM companies WHERE enabled=1" + (" AND name=?" if company_name else "") + " ORDER BY CASE WHEN last_checked IS NULL THEN 0 ELSE 1 END,last_checked,id"
+    if limit is not None:
+        query += f" LIMIT {int(limit)}"
+    companies = db.execute(query, (company_name,) if company_name else ()).fetchall()
     if not companies:
         raise ValueError("No enabled company matches the selection")
     failures = 0

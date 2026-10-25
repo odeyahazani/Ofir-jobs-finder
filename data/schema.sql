@@ -44,3 +44,14 @@ CREATE TABLE IF NOT EXISTS digest_runs (
 );
 CREATE INDEX IF NOT EXISTS jobs_company ON jobs(company_id);
 CREATE INDEX IF NOT EXISTS events_pending ON job_events(notified_at);
+CREATE TABLE IF NOT EXISTS job_discoveries (
+ id TEXT PRIMARY KEY, company_id TEXT NOT NULL REFERENCES companies(id),
+ company_name TEXT NOT NULL, title TEXT NOT NULL, url TEXT NOT NULL UNIQUE,
+ location_hint TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '',
+ added_at TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','linked')),
+ linked_job_id TEXT REFERENCES jobs(id), last_checked TEXT,
+ last_result TEXT NOT NULL DEFAULT 'ממצא שיובא — טרם אומת במקור הרשמי'
+);
+CREATE TABLE IF NOT EXISTS company_monitor_controls (
+ company_id TEXT PRIMARY KEY REFERENCES companies(id), opted_out INTEGER NOT NULL CHECK(opted_out IN (0,1))
+);

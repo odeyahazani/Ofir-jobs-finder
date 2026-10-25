@@ -14,8 +14,10 @@ from urllib.request import Request, build_opener, HTTPRedirectHandler
 from . import cli
 from .config import load_local_config
 from .store import connect, seed, now, process_lock
+from .growth import new_sources, scheduled_slot
+from .discoveries import verify_pending
 
-TABLES = ("companies", "imports", "jobs", "job_events", "digest_runs")
+TABLES = ("companies", "company_monitor_controls", "imports", "jobs", "job_events", "job_discoveries", "digest_runs")
 
 
 class NoRedirect(HTTPRedirectHandler):
@@ -54,7 +56,7 @@ class Remote:
     def rows(self, table):
         if table not in TABLES:
             raise ValueError("Unsupported snapshot table")
-        key = "canonical_url" if table == "imports" else "id"
+        key = "canonical_url" if table == "imports" else "company_id" if table == "company_monitor_controls" else "id"
         result = []
         offset = 0
         while offset < 100_000:
@@ -91,7 +93,7 @@ def restore(db, remote):
 
 
 def snapshot(db, migrate=False):
-    tables = ("companies", "jobs", "job_events", "scans", "imports") + (("digest_runs",) if migrate else ())
+    tables = ("companies", "jobs", "job_events", "job_discoveries", "scans", "imports") + (("company_monitor_controls", "digest_runs") if migrate else ())
     return {table: [dict(row) for row in db.execute(f"SELECT * FROM {table}")] for table in tables}
 
 
@@ -109,17 +111,34 @@ def main():
     commands.add_parser("check")
     scan = commands.add_parser("scan")
     scan.add_argument("--company")
+    scan.add_argument("--expand-by", type=int, default=0)
+    scan.add_argument("--limit", type=int, default=20)
+    commands.add_parser("scheduled-scan")
     digest = commands.add_parser("digest")
     digest.add_argument("--send", action="store_true")
     migrate = commands.add_parser("migrate")
     migrate.add_argument("--sqlite", required=True)
     importer = commands.add_parser("import-applications")
     importer.add_argument("file")
+    findings = commands.add_parser("import-discoveries")
+    findings.add_argument("file")
     args = parser.parse_args()
     try:
+        if args.command == "scan" and (not 1 <= args.limit <= 50 or not 0 <= args.expand_by <= 5 or (args.company and args.expand_by)):
+            raise ValueError("Use a limit of 1–50, expand by 0–5, and select either expansion or a specific company")
+        if args.command == "scheduled-scan" and not scheduled_slot():
+            print("Outside the Israeli-local 08:00/17:00 scan slots; no work scheduled")
+            return 0
         remote = Remote()
         if args.command == "check":
             print(f"Supabase worker read access verified; {len(remote.rows('companies'))} companies")
+            return 0
+        if args.command == "import-discoveries":
+            path = Path(args.file)
+            if path.stat().st_size > 500_000:
+                raise ValueError("Findings file exceeds 500KB")
+            result = remote.rpc("ofir_add_discoveries", {"payload": json.loads(path.read_text(encoding="utf-8-sig"))})
+            print("Imported unverified findings:", json.dumps(result))
             return 0
         with process_lock("cloud"):
             if args.command == "migrate":
@@ -129,16 +148,28 @@ def main():
                 with sqlite3.connect(source.as_uri() + "?mode=ro", uri=True) as db:
                     db.row_factory = sqlite3.Row
                     remote.rpc("ofir_sync", {"payload": snapshot(db, migrate=True)})
+                    remote.rpc("ofir_link_discoveries", {})
                 print("Local snapshot copied to Supabase; existing cloud feedback preserved")
                 return 0
             with tempfile.TemporaryDirectory(prefix="ofir-worker-") as folder:
                 db = connect(Path(folder) / "worker.sqlite")
                 try:
                     restore(db, remote)
-                    if args.command == "scan":
-                        result = cli.scan(db, args.company)
+                    if args.command in {"scan", "scheduled-scan"}:
+                        ids = new_sources(db, 1 if args.command == "scheduled-scan" else args.expand_by)
+                        if ids:
+                            activated = remote.rpc("ofir_enable_sources", {"ids": ids})
+                            if not isinstance(activated, list) or any(value not in ids for value in activated):
+                                raise RuntimeError("Invalid source activation response")
+                            with db:
+                                for company_id in activated:
+                                    db.execute("UPDATE companies SET enabled=1 WHERE id=?", (company_id,))
+                            print(f"Added {len(activated)} relevant sources to monitoring")
+                        result = cli.scan(db, args.company if args.command == "scan" else None, args.limit if args.command == "scan" else 20)
+                        verify_pending(db, limit=5)
                         # Commit successful sources and explicit failure status even after a partial failure.
                         remote.rpc("ofir_sync", {"payload": snapshot(db)})
+                        remote.rpc("ofir_link_discoveries", {})
                         return result
                     if args.command == "digest":
                         cli.digest(db, args.send, delivery_store=remote)

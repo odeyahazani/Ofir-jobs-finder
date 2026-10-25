@@ -3,17 +3,22 @@ from html import unescape
 from html.parser import HTMLParser
 import json
 import re
+import socket
+import ipaddress
+import os
 import time
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit, urljoin, quote
 from urllib.request import Request, build_opener, HTTPRedirectHandler
 from urllib.robotparser import RobotFileParser
 from .scoring import assess
+from .store import ROOT
 
 USER_AGENT = "OfirJobsFinder/0.1 (+personal noncommercial job search)"
 MAX_BYTES = 5_000_000
 ATS_HOSTS = {"boards-api.greenhouse.io", "boards.greenhouse.io", "job-boards.greenhouse.io", "job-boards.eu.greenhouse.io", "www.comeet.com", "www.comeet.co"}
 COMPANY_HOSTS = {"Augury": {"www.augury.com"}}
+TRUSTED_SOURCE_HOSTS = ATS_HOSTS | {"www.augury.com"} | {urlsplit(c["career_url"]).hostname for c in json.loads((ROOT / "data/companies.json").read_text()) if c["career_url"]}
 
 
 class SourceError(Exception):
@@ -103,6 +108,8 @@ def check_url(url, hosts):
     parts = urlsplit(url)
     if parts.scheme != "https" or parts.hostname not in hosts or parts.port not in (None, 443) or parts.username or parts.password:
         raise SourceError("unsupported", "Redirect or URL outside the explicitly supported HTTPS source hosts")
+    if not parts.hostname or not re.fullmatch(r"(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}", parts.hostname) or re.search(r"\.(local|localhost|internal|invalid|test)$", parts.hostname):
+        raise SourceError("unsupported", "Only public source hostnames are supported")
 
 
 class Client:
@@ -114,10 +121,22 @@ class Client:
 
     def raw(self, url):
         check_url(url, self.hosts)
+        try:
+            addresses = socket.getaddrinfo(urlsplit(url).hostname, 443, type=socket.SOCK_STREAM)
+        except OSError:
+            # Some managed environments expose DNS only through their HTTPS egress proxy.
+            # Reuse that supported route only for the reviewed seed/ATS hosts, never arbitrary imports.
+            if (os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")) and urlsplit(url).hostname in TRUSTED_SOURCE_HOSTS:
+                addresses = None
+            else:
+                raise SourceError("error", "Source hostname could not be resolved") from None
+        if addresses is not None and (not addresses or any(not ipaddress.ip_address(address[4][0]).is_global for address in addresses)):
+            raise SourceError("blocked", "Source hostname resolves to a non-public address")
         time.sleep(max(0, .3 - (time.monotonic() - self.last_request)))
         self.last_request = time.monotonic()
         try:
             with self.opener.open(Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json,text/html"}), timeout=25) as response:
+                self.last_url = response.geturl()
                 data = response.read(MAX_BYTES + 1)
                 if len(data) > MAX_BYTES:
                     raise SourceError("unsupported", "Response exceeds safe size limit")

@@ -15,3 +15,8 @@ export type Company = {
   last_checked: string | null; last_result: string; job_count: number | null;
   imported_last_checked: string; imported_last_result: string;
 };
+export type Discovery = {
+  id: string; company_id: string; company_name: string; title: string; url: string;
+  location_hint: string; notes: string; added_at: string; status: "pending" | "linked";
+  linked_job_id: string | null; last_checked: string | null; last_result: string;
+};
