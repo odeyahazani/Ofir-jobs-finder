@@ -601,7 +601,7 @@ td select {
   .search-controls { padding: 12px; gap: 10px; }
   .select-control { font-size: 11px; gap: 4px; }
   .select-control select { max-width: 152px; min-height: 40px; padding-inline: 6px; font-size: 11px; }
-  .filter-tabs { gap: 2px; padding: 8px; display: grid; grid-template-columns: 1fr 1.4fr .8fr 1.2fr; }
+  .filter-tabs { gap: 2px; padding: 8px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .filter-tabs button { padding: 5px 3px; font-size: 12px; min-height: 42px; white-space: nowrap; }
   .results-heading { margin-block: 20px 12px; }
   .results-heading h2 { font-size: 14px; }
@@ -661,3 +661,17 @@ td select {
   .login-card h1 { font-size: 26px; }
 }
 @media(prefers-reduced-motion:reduce) { *, *:before, *:after { animation: none!important; transition: none!important; scroll-behavior: auto!important; } }
+
+/* Profile evidence is readable independently of the numerical score. */
+.matching-pending { margin-block: 0 16px; }
+.evidence-list { display: grid; gap: 8px; }
+.evidence-item { border: 1px solid var(--color-border); border-radius: 9px; overflow: hidden; }
+.evidence-item summary { padding: 12px; font-size: 13px; cursor: pointer; }
+.evidence-item summary span { display: block; color: var(--color-text-secondary); font-size: 11px; margin-block-start: 4px; }
+.evidence-item > div { padding: 0 14px 12px; }
+.evidence-item p, .requirement-details p { font-size: 13px; line-height: 1.85; color: var(--color-text-secondary); }
+.evidence-caption { font-size: 11px; font-weight: 600; color: var(--color-text-secondary); }
+.evidence-item blockquote, .requirement-details blockquote { margin: 8px 0; padding: 10px 12px; border-inline-start: 2px solid var(--color-border); background: var(--color-surface-secondary); font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
+.requirement-details { margin-block: 20px; }
+.requirement-details summary { cursor: pointer; font-size: 13px; font-weight: 600; padding-block: 8px; }
+.requirement-details > div { padding-block: 8px; border-block-end: 1px solid var(--color-border); }

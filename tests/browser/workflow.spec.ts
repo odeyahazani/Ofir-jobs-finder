@@ -219,9 +219,9 @@ test("notes remain drafts across dismissal, tab keyboard navigation and job navi
   await opener.click();
   await page.getByRole("tab", { name: "המעקב שלי" }).click();
   await expect(page.getByRole("textbox", { name: "הערה אישית" })).toHaveValue("טיוטה שלא נשמרה בבדיקה");
-  await page.getByRole("button", { name: "המשרה הקודמת" }).click();
-  await expect(page.getByRole("dialog").getByRole("heading", { level: 2 })).not.toHaveText("TEST ONLY · Junior Integration Engineer 0");
   await page.getByRole("button", { name: "המשרה הבאה" }).click();
+  await expect(page.getByRole("dialog").getByRole("heading", { level: 2 })).not.toHaveText("TEST ONLY · Junior Integration Engineer 0");
+  await page.getByRole("button", { name: "המשרה הקודמת" }).click();
   await expect(page.getByRole("textbox", { name: "הערה אישית" })).toHaveValue("טיוטה שלא נשמרה בבדיקה");
   await page.keyboard.press("Escape");
 });
@@ -243,4 +243,49 @@ test("long descriptions scroll independently with visible actions and keyboard f
   }
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
+});
+
+
+test("profile categories, requirement gaps and project evidence stay separate from source verification", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "שוות בדיקה", exact: true }).click();
+  const review = page.locator(".job-card");
+  await expect(review).toHaveCount(1);
+  await expect(review.getByText("שווה בדיקה", { exact: true })).toBeVisible();
+  await expect(review.getByText("טרם אומתה", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "פערים בדרישות", exact: true }).click();
+  await expect(page.locator(".job-card")).toHaveCount(1);
+  await expect(page.locator(".job-card").getByText(/דרישת ניסיון של 3/)).toBeVisible();
+  await page.getByRole("button", { name: "כל המשרות", exact: true }).click();
+  await page.getByRole("button", { name: "TEST ONLY · Junior Integration Engineer 0", exact: true }).click();
+  await page.getByRole("tab", { name: "התאמה ופערים", exact: true }).click();
+  await expect(page.getByRole("dialog").getByText(/לא מתועד ניסיון הנדסי תעשייתי/)).toBeVisible();
+  const evidence = page.locator(".evidence-item").filter({ hasText: "MATLAB לניתוח ולמידול" });
+  await evidence.locator("summary").click();
+  await expect(evidence.getByText(/פרויקט גמר SFDI/)).toBeVisible();
+  await expect(evidence.getByText(/שחזור CT/)).toBeVisible();
+  await expect(evidence.locator("blockquote")).toContainText("MATLAB");
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+  await page.screenshot({ path: "/tmp/artifacts/ofir-ux-refresh/matching-evidence-mobile.png" });
+});
+
+test("rows pending recalculation show an explicit legacy state through the deployment transition", async ({ page }) => {
+  const { DatabaseSync } = await import("node:sqlite");
+  const db = new DatabaseSync(".local/e2e.sqlite");
+  const original = db.prepare("SELECT id,match_category,match_version,match_details FROM jobs WHERE source_id='test-only-0'").get()!;
+  try {
+    db.prepare("UPDATE jobs SET match_category=NULL,match_version=NULL,match_details=NULL WHERE id=?").run(String(original.id));
+    await page.goto("/");
+    await expect(page.getByText(/1 משרות טרם הותאמו לפרופיל המפורט/)).toBeVisible();
+    await page.getByRole("button", { name: "כל המשרות", exact: true }).click();
+    const card = page.locator(".job-card").filter({ hasText: "TEST ONLY · Junior Integration Engineer 0" });
+    await expect(card.getByText("טרם הותאמה לפרופיל החדש", { exact: true })).toBeVisible();
+    await card.getByRole("button", { name: "לפרטים ולסימון" }).click();
+    await page.getByRole("tab", { name: "התאמה ופערים", exact: true }).click();
+    await expect(page.getByText(/הערכה קודמת/)).toBeVisible();
+  } finally {
+    db.prepare("UPDATE jobs SET match_category=?,match_version=?,match_details=? WHERE id=?").run(String(original.match_category), String(original.match_version), String(original.match_details), String(original.id));
+    db.close();
+  }
 });

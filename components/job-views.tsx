@@ -1,13 +1,13 @@
 "use client";
 import { ArrowUpLeft, Bookmark, Eye, MapPin, X } from "lucide-react";
 import type { ApplicationStatus, Job } from "@/lib/types";
-import { applicationLabels, date, MatchScore, VerificationBadge } from "./job-ui";
+import { applicationLabels, date, MatchScore, MatchingBadge, VerificationBadge } from "./job-ui";
 import type { UpdateJob as Update } from "./job-details";
 type Props = { job: Job; busy: boolean; open: (job: Job) => void; update: Update };
 export function JobCard({ job, busy, open, update }: Props) {
   const saved = job.fit === "yes" || job.application_status === "planned";
   return <article className="job-card"><div className="job-top"><span className="company-avatar" aria-hidden="true">{job.company.slice(0, 1)}</span><div className="job-identity"><span className="job-company"><bdi>{job.company}</bdi></span><h3><button dir="auto" onClick={() => open(job)}>{job.title}</button></h3><div className="job-meta"><span><MapPin size={14}/><bdi>{job.location || "מיקום לבדיקה"}</bdi></span><span>{job.experience || "ניסיון לא צוין"}</span></div></div><MatchScore job={job}/></div>
-    <div className="job-summary"><div className="job-tags"><VerificationBadge job={job}/>{!job.eligible && <span className="badge warning" title={job.exclusion_reason || undefined}>מחוץ לתנאי ההתאמה</span>}{job.familiar && <span className="badge neutral">מוכרת לי</span>}{job.application_status !== "not_applied" && <span className="badge info">{applicationLabels[job.application_status]}</span>}{job.fit === "no" && <span className="badge neutral">סומנה כלא מתאימה</span>}</div>
+    <div className="job-summary"><div className="job-tags"><MatchingBadge job={job}/><VerificationBadge job={job}/>{job.familiar && <span className="badge neutral">מוכרת לי</span>}{job.application_status !== "not_applied" && <span className="badge info">{applicationLabels[job.application_status]}</span>}{job.fit === "no" && <span className="badge neutral">סומנה כלא מתאימה</span>}</div>
     <p className="job-reason">{!job.eligible ? job.exclusion_reason || "תנאי הסף דורשים בדיקה" : job.reasons[0] || "נדרשת בחינה של תיאור התפקיד"}</p></div>
     <div className="job-footer"><div className="job-actions"><button disabled={busy || job.application_status === "planned"} title={job.application_status === "planned" ? "המשרה נמצאת בתכנון הגשה; אפשר לעדכן במעקב המועמדויות" : undefined} aria-pressed={saved} onClick={() => update(job, { fit: saved ? "unrated" : "yes" })}><Bookmark size={16}/>{saved ? "שמורה" : "שמירה להמשך"}</button><button disabled={busy} aria-pressed={job.fit === "no"} onClick={() => update(job, { fit: job.fit === "no" ? "unrated" : "no" })}><X size={16}/>לא מתאים</button><button disabled={busy} aria-pressed={job.familiar} onClick={() => update(job, { familiar: !job.familiar })}><Eye size={16}/>מוכרת לי</button><button className="text-button" onClick={() => open(job)}>לפרטים ולסימון<ArrowUpLeft size={16}/></button></div><span className="job-dates">{job.published_at ? `פורסמה: ${date(job.published_at)}` : `התגלתה: ${date(job.first_seen_at)}`}</span></div>
   </article>;

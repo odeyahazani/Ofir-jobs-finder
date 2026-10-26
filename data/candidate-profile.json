@@ -1,0 +1,165 @@
+{
+  "version": "ofir-profile-v1",
+  "basis": "Professional master dossier supplied by the user; academic and project experience are not industrial tenure.",
+  "graduate": true,
+  "industrial_engineering_years": 0,
+  "preferences": {
+    "origin": "Pardes Hanna",
+    "preferred_commute_minutes": 90,
+    "international_travel": true,
+    "hands_on_and_analysis": true,
+    "avoid_primary_service_or_management": true
+  },
+  "evidence": {
+    "sfdi": "פרויקט גמר SFDI: החזרת מערכת לפעילות, אינטגרציה, יישור, כיול ואימות מול פנטומים; התאמת קוד Python קיים לבקרה ורכישה וכתיבת ניתוח ועיבוד תמונה ב־MATLAB. לא פיתוח מערכת מלאה מאפס.",
+    "nanorods": "פרויקט מחקר בפיזיקה: פלואורסצנציה ב־NIR, ננו־מוטות זהב, PMT, TCSPC, ספקטרוסקופיה וניסויים מבוקרים.",
+    "ct": "פרויקט אקדמי: שחזור CT ב־MATLAB, Radon, sinogram, Filtered Back Projection ו־Ram-Lak.",
+    "rf_labs": "קורסים ומעבדות בתקשורת ו־RF: FFT, סינון, רעש, SNR, TX/RX וציוד מדידה; ללא ניסיון RF תעשייתי.",
+    "academic_tools": "היכרות אקדמית עם C++, Linux, LTSpice ו־Multisim; ללא מומחיות תעשייתית מוכחת.",
+    "degrees": "שני תארי B.Sc. בהנדסת חשמל ובפיזיקה, בהתמחויות ביו־רפואה ותקשורת."
+  },
+  "capabilities": [
+    {
+      "id": "matlab",
+      "label": "MATLAB לניתוח ולמידול",
+      "level": "project",
+      "evidence": [
+        "sfdi",
+        "ct"
+      ],
+      "pattern": "matlab",
+      "points": 7
+    },
+    {
+      "id": "python",
+      "label": "Python לבקרה ורכישת נתונים",
+      "level": "project",
+      "evidence": [
+        "sfdi"
+      ],
+      "pattern": "python",
+      "points": 4
+    },
+    {
+      "id": "integration",
+      "label": "אינטגרציה ופתרון תקלות במערכת",
+      "level": "project",
+      "evidence": [
+        "sfdi"
+      ],
+      "pattern": "integrat|troubleshoot|אינטגרציה|פתרון תקלות",
+      "points": 6
+    },
+    {
+      "id": "calibration",
+      "label": "כיול, מדידות וולידציה ניסויית",
+      "level": "project",
+      "evidence": [
+        "sfdi",
+        "nanorods"
+      ],
+      "pattern": "calibrat|validat|measurement|characterization|כיול|מדיד|ולידציה",
+      "points": 6
+    },
+    {
+      "id": "research",
+      "label": "תכנון ניסויים ושיטה מחקרית",
+      "level": "project",
+      "evidence": [
+        "sfdi",
+        "nanorods"
+      ],
+      "pattern": "structured experiments|scientific method|research background|research experience|experimental|תכנון ניסוי|ניסויים|מחקר ניסויי",
+      "points": 7
+    },
+    {
+      "id": "optics",
+      "label": "מערכות אלקטרו־אופטיות וגלאים",
+      "level": "project",
+      "evidence": [
+        "sfdi",
+        "nanorods"
+      ],
+      "pattern": "optic|photon|spectroscop|fluorescen|pmt|tcspc|אופט|גלאי",
+      "points": 7
+    },
+    {
+      "id": "analysis",
+      "label": "עיבוד אותות, תמונה ונתוני ניסוי",
+      "level": "project",
+      "evidence": [
+        "sfdi",
+        "ct",
+        "rf_labs"
+      ],
+      "pattern": "signal processing|image.processing|image.based|data analysis|analyzing.{0,25}data|analytic tools|עיבוד אות|עיבוד תמונ|ניתוח נתונ",
+      "points": 7
+    },
+    {
+      "id": "modeling",
+      "label": "מידול פיזיקלי ובעיות הפוכות",
+      "level": "project",
+      "evidence": [
+        "sfdi",
+        "ct"
+      ],
+      "pattern": "physical model|inverse model|numerical|reconstruction|radon|מידול|שחזור",
+      "points": 5
+    },
+    {
+      "id": "instrumentation",
+      "label": "ציוד מעבדה ורכישת נתונים",
+      "level": "project",
+      "evidence": [
+        "sfdi",
+        "nanorods",
+        "rf_labs"
+      ],
+      "pattern": "oscilloscope|multimeter|daq|camera|laborator|lab instruments|measurement equipment|מעבדה|מצלמ",
+      "points": 5
+    },
+    {
+      "id": "rf",
+      "label": "RF ותקשורת — בסיס אקדמי ומעבדתי",
+      "level": "academic",
+      "evidence": [
+        "rf_labs"
+      ],
+      "pattern": "\\brf\\b|microwave|antenna|tx/rx|modulation|תקשורת|אנטנ",
+      "points": 3
+    },
+    {
+      "id": "cpp",
+      "label": "C++ — רקע אקדמי",
+      "level": "academic",
+      "evidence": [
+        "academic_tools"
+      ],
+      "pattern": "c\\+\\+|c plus plus",
+      "points": 1
+    }
+  ],
+  "not_documented": [
+    "SystemVerilog",
+    "UVM",
+    "VCS",
+    "Xcelium",
+    "Questa",
+    "PCB design",
+    "FPGA development",
+    "Zemax",
+    "embedded firmware expertise",
+    "ISO 13485",
+    "IEC 60601",
+    "semiconductor fabrication workflows",
+    "professional machine learning"
+  ],
+  "evidence_titles": {
+    "sfdi": "פרויקט SFDI",
+    "nanorods": "מחקר הפלואורסצנציה",
+    "ct": "פרויקט CT",
+    "rf_labs": "מעבדות RF ותקשורת",
+    "academic_tools": "לימודים אקדמיים",
+    "degrees": "תארי B.Sc."
+  }
+}

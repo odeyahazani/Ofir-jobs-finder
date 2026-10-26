@@ -17,8 +17,12 @@ BEGIN
      last_seen_at=excluded.last_seen_at,last_verified_at=excluded.last_verified_at,status=excluded.status,
      score=excluded.score,breakdown=excluded.breakdown,reasons=excluded.reasons,gaps=excluded.gaps,
      experience=excluded.experience,eligible=excluded.eligible,exclusion_reason=excluded.exclusion_reason,
-     content_hash=excluded.content_hash,version=excluded.version
-     WHERE excluded.last_seen_at>=jobs.last_seen_at;
+     content_hash=excluded.content_hash,version=excluded.version,
+     match_category=COALESCE(excluded.match_category,jobs.match_category),
+     match_version=COALESCE(excluded.match_version,jobs.match_version),
+     match_details=COALESCE(excluded.match_details,jobs.match_details)
+     WHERE excluded.last_seen_at>=jobs.last_seen_at
+       AND (COALESCE(jobs.match_version,'')='' OR COALESCE(excluded.match_version,'')<>'');
    -- Feedback, application status, personal notes and first_seen_at are preserved on updates.
  END LOOP;
  FOR e IN SELECT * FROM jsonb_populate_recordset(NULL::public.job_events,COALESCE(payload->'job_events','[]')) LOOP

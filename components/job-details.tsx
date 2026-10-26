@@ -2,8 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ArrowUpLeft, Bookmark, BriefcaseBusiness, Check, CheckCheck, ChevronLeft, ChevronRight, ExternalLink, MapPin, X } from "lucide-react";
+import { currentMatch } from "@/lib/matching";
 import type { ApplicationStatus, Fit, Job } from "@/lib/types";
-import { applicationLabels, date, fitLabels, MatchScore, safeLink, VerificationBadge } from "./job-ui";
+import { applicationLabels, date, fitLabels, MatchScore, MatchingBadge, safeLink, VerificationBadge } from "./job-ui";
 
 export type JobPatch = Partial<Pick<Job, "fit" | "familiar" | "application_status" | "personal_note">>;
 export type UpdateJob = (job: Job, patch: JobPatch) => Promise<boolean>;
@@ -35,6 +36,8 @@ export default function JobDetails({ job, jobs, busy, error, message, note, onNo
   const index = jobs.findIndex(item => item.id === job.id);
   const saved = job.fit === "yes" || job.application_status === "planned";
   const sourceUrl = safeLink(job.url);
+  const profileMatch = currentMatch(job);
+  const scoreMaximums = profileMatch ? { professional: 45, technical: 35, sector: 20 } as Record<string, number> : maximums;
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -94,11 +97,15 @@ export default function JobDetails({ job, jobs, busy, error, message, note, onNo
           <details className="source-dates"><summary>פרטי המקור ותאריכים</summary><dl><div><dt>תאריך פרסום</dt><dd>{date(job.published_at)}</dd></div><div><dt>עדכון במקור</dt><dd>{date(job.updated_at)}</dd></div><div><dt>גילוי במאגר</dt><dd>{date(job.first_seen_at)}</dd></div><div><dt>אימות אחרון</dt><dd>{date(job.last_verified_at)}</dd></div></dl></details>
         </section>
         <section role="tabpanel" id="detail-section-fit" aria-labelledby="detail-tab-fit" hidden={tab !== "fit"} tabIndex={0}>
-          <div className="fit-summary"><MatchScore job={job}/><div><h3>מה עומד מאחורי ההתאמה?</h3><p>הציון מסייע לתעדף. תנאי הסף וזמינות המשרה נבדקים בנפרד.</p></div></div>
+          <div className="fit-summary"><MatchScore job={job}/><div><MatchingBadge job={job}/><h3>מה עומד מאחורי ההתאמה?</h3><p>הציון מסייע לתעדף. תנאי הסף וזמינות המשרה נבדקים בנפרד.</p></div></div>
+          {profileMatch && <p className="notice">מבוסס על תארים, פרויקטי SFDI ופלואורסצנציה ומעבדות. לא מתועד ניסיון הנדסי תעשייתי. הציון הוא כלי לתעדוף ואינו תחזית קבלה לעבודה.</p>}
+          {!profileMatch && <p className="notice">הערכה קודמת: המשרה עדיין לא נבדקה מול הפרופיל המפורט של אופיר.</p>}
           {!job.eligible && <div className="notice warning-notice"><strong>דרישות לבדיקה</strong><p>{job.exclusion_reason || "המשרה לא עברה את תנאי הסף הראשוניים."}</p></div>}
           <div className="insight-section"><h3><Check size={18}/>נקודות חיבור לרקע שלך</h3>{job.reasons.length ? <ul>{job.reasons.map(reason => <li key={reason}>{reason}</li>)}</ul> : <p>טרם זוהו נקודות התאמה מפורשות.</p>}</div>
           <div className="insight-section"><h3>פערים ומה כדאי לבדוק</h3>{job.gaps.length ? <ul>{job.gaps.map(gap => <li key={gap}>{gap}</li>)}</ul> : <p>לא תועדו פערים. מומלץ לקרוא את הדרישות במקור.</p>}</div>
-          <details className="score-details"><summary>פירוט ציון ההתאמה</summary><div className="score-breakdown">{Object.entries(job.breakdown).map(([key, value]) => <div key={key}><div><span>{breakdownLabels[key] || key}</span><strong><bdi>{value}/{maximums[key] || 100}</bdi></strong></div><meter min={0} max={maximums[key] || 100} value={value} aria-label={breakdownLabels[key] || key}/></div>)}</div></details>
+          {profileMatch && job.match_details.evidence.length > 0 && <div className="insight-section evidence-list"><h3>הראיות מאחורי ההתאמה</h3>{job.match_details.evidence.map(item => <details key={item.capability} className="evidence-item"><summary>{item.label}<span>{item.level === "academic" ? "רקע אקדמי" : "ניסיון מפרויקט"}</span></summary><div>{item.profile_evidence.map((proof, i) => <p key={i}>{proof}</p>)}<span className="evidence-caption">הניסוח במשרה</span><blockquote dir="auto">{item.job_quote}</blockquote></div></details>)}</div>}
+          {profileMatch && job.match_details.requirements.length > 0 && <details className="requirement-details"><summary>דרישות שזוהו במקור</summary>{job.match_details.requirements.map((item, i) => <div key={i}><span className={`badge ${item.optional ? "neutral" : "warning"}`}>{item.optional ? "יתרון לפי הניסוח" : "נדרש לפי הניסוח"}</span><blockquote dir="auto">{item.quote}</blockquote></div>)}<p>הפענוח אוטומטי. במקרה של ניסוח עמום, יש לבדוק את הסעיף המלא באתר החברה.</p></details>}
+          <details className="score-details"><summary>פירוט ציון ההתאמה</summary><div className="score-breakdown">{Object.entries(job.breakdown).map(([key, value]) => <div key={key}><div><span>{breakdownLabels[key] || key}</span><strong><bdi>{value}/{scoreMaximums[key] || 100}</bdi></strong></div><meter min={0} max={scoreMaximums[key] || 100} value={value} aria-label={breakdownLabels[key] || key}/></div>)}</div></details>
         </section>
         <section role="tabpanel" id="detail-section-tracking" aria-labelledby="detail-tab-tracking" hidden={tab !== "tracking"} tabIndex={0}>
           <div className="tracking-heading"><h3>ההתרשמות וההתקדמות שלך</h3><p>הסימונים נשמרים אוטומטית. הערות נשמרות בלחיצה על שמירה.</p></div>

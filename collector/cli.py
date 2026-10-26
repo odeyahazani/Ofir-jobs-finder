@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 
 from .store import connect, seed, now, save_job, process_lock, canonical_url
 from .scoring import assess, within_age_limit
+from .matching import exclude, VERSION
 from .sources import collect, SourceError
 
 
@@ -43,9 +44,9 @@ def scan(db, company_name=None, limit=None):
                 for job in jobs:
                     assessment = assess(job["title"], job["description"], job["location"], company)
                     if job.get("requirements_unconfirmed"):
-                        assessment.update(eligible=False, exclusion_reason="דרישות המשרה לא חולצו בסעיף מובחן — נדרשת בדיקה ידנית")
+                        exclude(assessment, "דרישות המשרה לא חולצו בסעיף מובחן — נדרשת בדיקה ידנית", uncertain=True)
                     if not within_age_limit(job.get("published_at")):
-                        assessment.update(eligible=False, exclusion_reason="תאריך הפרסום מחוץ לחלון ששת החודשים")
+                        exclude(assessment, "תאריך הפרסום מחוץ לחלון ששת החודשים")
                     eligible += bool(assessment["eligible"])
                     new += save_job(db, company["id"], job, assessment)
                     seen.append(canonical_url(job["url"]))
@@ -99,9 +100,9 @@ def digest(db, send=False, delivery_store=None):
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=30)).isoformat(timespec="seconds")
     rows = db.execute("""SELECT e.id AS event_id,j.*,c.name AS company FROM job_events e JOIN jobs j ON j.id=e.job_id
         JOIN companies c ON c.id=j.company_id WHERE e.notified_at IS NULL AND e.version=j.version
-        AND j.eligible=1 AND j.score>=70 AND j.status='open' AND j.last_verified_at>=?
+        AND j.eligible=1 AND j.score>=70 AND j.match_category='priority' AND j.match_version=? AND j.status='open' AND j.last_verified_at>=?
         AND j.familiar=0 AND j.application_status='not_applied' AND j.fit!='no'
-        ORDER BY j.score DESC,j.published_at DESC,j.first_seen_at DESC""", (cutoff,)).fetchall()
+        ORDER BY j.score DESC,j.published_at DESC,j.first_seen_at DESC""", (VERSION, cutoff,)).fetchall()
     # All matched events are represented by the count; the first five also get individual links.
     text = f"הסיכום היומי של אופיר · {day}\n{len(rows)} הזדמנויות חדשות או שהפכו לרלוונטיות."
     for row in rows[:5]:

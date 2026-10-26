@@ -27,7 +27,8 @@ CREATE TABLE IF NOT EXISTS jobs (
  content_hash TEXT NOT NULL, version INTEGER NOT NULL DEFAULT 1,
  fit TEXT NOT NULL DEFAULT 'unrated', familiar INTEGER NOT NULL DEFAULT 0,
  application_status TEXT NOT NULL DEFAULT 'not_applied', personal_note TEXT NOT NULL DEFAULT '',
- user_updated_at TEXT
+ user_updated_at TEXT,
+ match_category TEXT DEFAULT 'unassessed', match_version TEXT DEFAULT '', match_details TEXT DEFAULT '{}'
 );
 CREATE TABLE IF NOT EXISTS job_events (
  id INTEGER PRIMARY KEY, job_id TEXT NOT NULL REFERENCES jobs(id),

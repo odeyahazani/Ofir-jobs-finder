@@ -2,6 +2,7 @@ import "server-only";
 import { supabase } from "./auth";
 import type { Company, Job, Discovery } from "./types";
 import type { GrowthPayload } from "./discovery";
+import { normalizeMatching } from "./matching";
 
 function storage() {
   const mode = process.env.OFIR_STORAGE || (process.env.NODE_ENV === "production" ? "supabase" : "sqlite");
@@ -58,7 +59,7 @@ export async function listJobs(): Promise<Job[]> {
   if (storage() === "sqlite") return (await import("./local-db")).listJobs();
   const [rows, companies] = await Promise.all([remoteRows("jobs"), listCompanies()]);
   const names = new Map(companies.map(c => [c.id, c.name]));
-  return rows.map(row => ({ ...row, company: names.get(String(row.company_id)) || "",
+  return rows.map(row => ({ ...row, ...normalizeMatching(row), company: names.get(String(row.company_id)) || "",
     eligible: Boolean(row.eligible), familiar: Boolean(row.familiar),
     breakdown: JSON.parse(String(row.breakdown)), reasons: JSON.parse(String(row.reasons)), gaps: JSON.parse(String(row.gaps)),
   }) as Job);

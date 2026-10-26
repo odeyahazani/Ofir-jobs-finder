@@ -1,0 +1,20 @@
+Description
+The Application Development Engineer serves as an interface between the marketing and the R&D, ensuring product requirements are properly delivered from marketing to R&D and verifying the products' quality at the end of the development cycle, by using advanced analytic tools.
+Define application requirements based on customer processes.
+Validate new algorithms, optics, and system capabilities during prerelease cycles.
+Run structured experiments and statistical/image-based analyses.
+Work daily with Algorithm, Physics, Systems Engineering, and Software teams to translate customer necessity into technical requirements.
+Prepare validation reports, application documentation, and evaluation summaries.
+Train internal stakeholders on new applications.
+Requirements
+Proven research background — experience conducting structured experiments, analyzing complex datasets, and driving conclusions using scientific methodology.
+Academic background in any scientific or engineering field, including Physics, Engineering, Biology, Chemistry, or related sciences.
+Strong background in multidisciplinary systems.
+Strong data analysis skills; experience with statistical/image-based analysis tools (Excel, JMP, MATLAB, or Python).
+Ability to evaluate and validate algorithmic (including AI-based) system performance.
+Fluent technical English.
+Familiarity with semiconductor fabrication processes and inspection workflows.
+Travel internationally (20-30%) for installations, support, and customer engagements.
+Important Clarification
+Coding is not part of the role.
+Candidates primarily focused on software development are not fit.

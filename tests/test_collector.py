@@ -17,7 +17,7 @@ from collector.sources import collect, postings, normalize_posting, SourceError,
 from collector.scheduler import due
 
 COMPANY = {"notes": "Medical devices, optics and integration"}
-DESCRIPTION = "Junior integration engineer. Python and MATLAB. Optical lab experiments, sensors and signal processing. 0-1 years of experience."
+DESCRIPTION = "Description\nJunior integration engineer. Python and MATLAB. Optical lab experiments, sensors and signal processing.\nRequirements\n0-1 years of experience."
 
 
 class ScoringTests(unittest.TestCase):
@@ -29,7 +29,7 @@ class ScoringTests(unittest.TestCase):
         self.assertTrue(result["eligible"])
         self.assertGreaterEqual(result["score"], 70)
         self.assertLessEqual(result["score"], 100)
-        self.assertEqual(result["breakdown"]["growth"], 0)
+        self.assertEqual(result["match_category"], "priority")
 
     def test_no_junior_in_title_required(self):
         self.assertTrue(self.score(description="Integration and laboratory testing, Python. 2 years of experience.")["eligible"])
@@ -62,7 +62,7 @@ class ScoringTests(unittest.TestCase):
                 self.assertFalse(self.score(title=title)["eligible"])
 
     def test_team_leader_is_not_recommended_even_with_high_fit(self):
-        result = self.score(title="Failure Analysis and Quality Control Team Leader")
+        result = self.score(title="Failure Analysis and Quality Control Team Leader", description=DESCRIPTION.replace("Optical lab experiments", "Optical laboratory structured experiments, calibration and data analysis"))
         self.assertGreaterEqual(result["score"], 70)
         self.assertFalse(result["eligible"])
         self.assertEqual(result["exclusion_reason"], "תפקיד בכיר או ניהולי")
@@ -76,7 +76,8 @@ class ScoringTests(unittest.TestCase):
     def test_unknown_experience_not_assumed_entry(self):
         result = self.score(description="Hardware testing and Python")
         self.assertEqual(result["experience"], "לא צוין בבירור")
-        self.assertLess(result["breakdown"]["experience"], 25)
+        self.assertEqual(result["match_category"], "review")
+        self.assertTrue(result["match_details"]["checks"])
 
     def test_outside_israel_not_assumed_local_from_company_address(self):
         self.assertFalse(self.score(location="New York, US")["eligible"])

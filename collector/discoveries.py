@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 import re
 from urllib.parse import urlsplit
 from .sources import Client, SourceError, postings, embedded_json, comeet_job, normalize_posting, plain
+from .matching import exclude
 from .scoring import assess, within_age_limit
 from .store import canonical_url, save_job, now
 
@@ -72,7 +73,7 @@ def verify_pending(db, limit=5):
             job["status"] = "open"
             assessment = assess(job["title"], job["description"], job["location"], company)
             if not within_age_limit(job.get("published_at")):
-                assessment.update(eligible=False, exclusion_reason="תאריך הפרסום מחוץ לחלון ששת החודשים")
+                exclude(assessment, "תאריך הפרסום מחוץ לחלון ששת החודשים")
             with db:
                 save_job(db, company["id"], job, assessment)
                 stored = db.execute("SELECT id FROM jobs WHERE url=?", (finding["url"],)).fetchone()

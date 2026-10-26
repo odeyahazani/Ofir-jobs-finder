@@ -3,6 +3,7 @@ from collections import Counter
 from datetime import datetime, timezone, timedelta
 import json
 from .growth import new_sources
+from .matching import VERSION
 
 
 def report(db):
@@ -20,7 +21,7 @@ def report(db):
         if c['id'] in ids: print(f'  {c["name"]} | {c["ats_hint"]} | {c["career_url"]}')
     print('Scheduled onboarding adds at most one company per run; it does not cover all source types.')
     # This is deliberately labeled as the collector rule, not the UI's separate location classifier.
-    israel = [j for j in jobs if json.loads(j['breakdown']).get('location', 0) > 0]
+    israel = [j for j in jobs if (json.loads(j['match_details'] or '{}').get('location_in_israel', False) if j['match_version'] == VERSION else json.loads(j['breakdown']).get('location', 0) > 0)]
     eligible = [j for j in israel if j['eligible']]
     scored = [j for j in eligible if j['score'] >= 70]
     now = datetime.now(timezone.utc)
@@ -29,10 +30,13 @@ def report(db):
             age = now - datetime.fromisoformat(j['last_verified_at'].replace('Z', '+00:00'))
             return j['status'] == 'open' and timedelta(0) <= age < timedelta(hours=30)
         except (ValueError, TypeError, AttributeError): return False
-    verified = [j for j in scored if fresh(j)]
+    ready = [j for j in scored if j['match_version'] != VERSION or j['match_category'] == 'priority']
+    verified = [j for j in ready if fresh(j)]
     actionable = [j for j in verified if j['fit'] != 'no' and j['application_status'] == 'not_applied']
     print('\nRECOMMENDATION FUNNEL (collector location rule; UI location classification is independent)')
-    print(f'Raw jobs: {len(jobs)} -> Israeli location rule: {len(israel)} -> eligible: {len(eligible)} -> score >=70: {len(scored)} -> open and verified <30h: {len(verified)} -> not applied/not rejected by user: {len(actionable)}')
+    print(f'Raw jobs: {len(jobs)} -> Israeli location rule: {len(israel)} -> eligible: {len(eligible)} -> score >=70: {len(scored)} -> requirements ready: {len(ready)} -> open and verified <30h: {len(verified)} -> not applied/not rejected by user: {len(actionable)}')
+    print('Current profile categories:', json.dumps(dict(Counter(j['match_category'] or 'unassessed' for j in israel)), ensure_ascii=False))
+    print(f'After requirement readiness: {len(ready)}; previous-model records: {sum(j["match_version"] != VERSION for j in jobs)}')
     print('Stored primary exclusions in Israeli records:', json.dumps(dict(Counter(j['exclusion_reason'] or 'eligible' for j in israel)), ensure_ascii=False))
     print('These are primary stored reasons, not every independently failing requirement.')
     print('\nHIGHEST SCORING ELIGIBLE ISRAELI RECORDS (review candidates, not recommendations)')

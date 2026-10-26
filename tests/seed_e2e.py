@@ -37,6 +37,7 @@ with db:
                 "Familiarity with structured experiments and data analysis. This is isolated synthetic browser-test content, not a real vacancy.",
                 "Ability to document technical work clearly and collaborate with a multidisciplinary team.",
             ])
+        if index == 2: job["description"] += "\nRequirements\n3 years of professional integration experience required."
         save_job(db, company["id"], job, assess(job["title"], job["description"], job["location"], company))
     for source_id, location in [("test-abroad", "San Jose, California, United States"), ("test-unknown", "Remote")]:
         job = {"source_id": source_id, "title": f"TEST ONLY · {source_id}",

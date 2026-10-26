@@ -28,7 +28,7 @@ class CloudTests(unittest.TestCase):
     def job(self):
         company = self.db.execute("SELECT * FROM companies WHERE name='Augury'").fetchone()
         job = {"source_id": "cloud-fixture", "title": "TEST ONLY Junior Integration Engineer", "location": "Haifa, Israel",
-               "description": "Junior lab integration. Python MATLAB, optics, sensors and signal processing. 0-1 years experience.",
+               "description": "Description\nJunior lab integration. Python MATLAB, optics, sensors and signal processing.\nRequirements\n0-1 years experience.",
                "url": "https://example.com/cloud-fixture", "status": "open"}
         with self.db:
             save_job(self.db, company["id"], job, assess(job["title"], job["description"], job["location"], company))
@@ -115,6 +115,14 @@ class CloudTests(unittest.TestCase):
                 with self.assertRaises(ValueError): Remote()
         with patch.dict(os.environ, {"NEXT_PUBLIC_SUPABASE_URL": "https://example.supabase.co", "SUPABASE_SERVICE_ROLE_KEY": ""}):
             with self.assertRaisesRegex(ValueError, "securely"): Remote()
+
+    def test_profile_writes_require_additive_schema_with_an_actionable_error(self):
+        with patch.dict(os.environ, {"NEXT_PUBLIC_SUPABASE_URL": "https://example.supabase.co", "SUPABASE_SERVICE_ROLE_KEY": "fixture"}):
+            remote = Remote()
+        remote.request = MagicMock(side_effect=RuntimeError('Supabase HTTP 400'))
+        with self.assertRaisesRegex(RuntimeError, 'upgrade-matching.sql'):
+            remote.ensure_matching_schema()
+        self.assertEqual(remote.request.call_args.args, ('jobs?select=match_category,match_version,match_details&limit=1',))
 
     def test_pagination_uses_an_explicit_stable_order_and_reads_all_pages(self):
         with patch.dict(os.environ, {"NEXT_PUBLIC_SUPABASE_URL": "https://example.supabase.co", "SUPABASE_SERVICE_ROLE_KEY": "fixture"}):

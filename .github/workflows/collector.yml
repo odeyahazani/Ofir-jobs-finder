@@ -10,7 +10,7 @@ on:
       command:
         description: Operation
         type: choice
-        options: [scan, scan-and-expand, scan-and-expand-five, check, audit, probe-sources, digest-preview, digest-send]
+        options: [scan, scan-and-expand, scan-and-expand-five, check, audit, matching-preview, rescore, probe-sources, digest-preview, digest-send]
         default: scan
 
 permissions:
@@ -49,6 +49,8 @@ jobs:
             scheduled-scan) python -m collector.cloud scheduled-scan ;;
             check) python -m collector.cloud check ;;
             audit) python -m collector.cloud audit ;;
+            matching-preview) python -m collector.cloud matching-preview ;;
+            rescore) python -m collector.cloud rescore ;;
             probe-sources) python -m collector.cloud probe-sources ;;
             digest-preview) python -m collector.cloud digest ;;
             digest-send) python -m collector.cloud digest --send ;;
@@ -60,6 +62,16 @@ jobs:
         with:
           name: career-page-review
           path: .local/source-probe/report.json
+          include-hidden-files: true
+          retention-days: 3
+          if-no-files-found: error
+
+      - name: Save matching preview
+        if: inputs.command == 'matching-preview'
+        uses: actions/upload-artifact@v6
+        with:
+          name: matching-review
+          path: .local/matching-review/report.json
           include-hidden-files: true
           retention-days: 3
           if-no-files-found: error

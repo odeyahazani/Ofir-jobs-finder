@@ -28,6 +28,10 @@ def connect(path=None):
     db = sqlite3.connect(path, timeout=15)
     db.row_factory = sqlite3.Row
     db.executescript((ROOT / "data/schema.sql").read_text())
+    columns = {row[1] for row in db.execute('PRAGMA table_info(jobs)')}
+    for name, default in [('match_category', 'unassessed'), ('match_version', ''), ('match_details', '{}')]:
+        if name not in columns:
+            db.execute(f"ALTER TABLE jobs ADD COLUMN {name} TEXT DEFAULT '{default}'")
     return db
 
 
@@ -71,6 +75,9 @@ def save_job(db, company_id, job, assessment):
         "gaps": json.dumps(assessment["gaps"], ensure_ascii=False),
         "experience": assessment["experience"], "eligible": assessment["eligible"],
         "exclusion_reason": assessment["exclusion_reason"], "content_hash": digest, "version": version,
+        "match_category": assessment.get("match_category", "unassessed"),
+        "match_version": assessment.get("match_version", ""),
+        "match_details": json.dumps(assessment.get("match_details", {}), ensure_ascii=False),
     }
     keys = list(values)
     updates = ','.join(f'{key}=excluded.{key}' for key in keys if key not in {"id", "first_seen_at"})

@@ -7,6 +7,7 @@ import type { Company, Job } from "./types";
 import type { Discovery } from "./types";
 import type { GrowthPayload } from "./discovery";
 import { createHash } from "node:crypto";
+import { normalizeMatching } from "./matching";
 
 let connection: DatabaseSync | undefined;
 function database() {
@@ -16,6 +17,10 @@ function database() {
   const db = new DatabaseSync(filename);
   db.exec("PRAGMA busy_timeout=15000");
   db.exec(fs.readFileSync(path.join(process.cwd(), "data/schema.sql"), "utf8"));
+  const columns = new Set(db.prepare("PRAGMA table_info(jobs)").all().map(row => String(row.name)));
+  for (const [column, fallback] of [["match_category", "unassessed"], ["match_version", ""], ["match_details", "{}"]]) {
+    if (!columns.has(column)) db.exec(`ALTER TABLE jobs ADD COLUMN ${column} TEXT DEFAULT '${fallback}'`);
+  }
   db.exec("BEGIN");
   try {
     for (const company of companies) {
@@ -36,7 +41,7 @@ function database() {
 export function listJobs(): Job[] {
   const rows = database().prepare(`SELECT j.*, c.name AS company FROM jobs j JOIN companies c ON c.id=j.company_id
     ORDER BY (j.score / 10) DESC, j.published_at DESC, j.first_seen_at DESC, j.id`).all();
-  return rows.map(row => ({ ...row, eligible: Boolean(row.eligible), familiar: Boolean(row.familiar),
+  return rows.map(row => ({ ...row, ...normalizeMatching(row), eligible: Boolean(row.eligible), familiar: Boolean(row.familiar),
     breakdown: JSON.parse(String(row.breakdown)), reasons: JSON.parse(String(row.reasons)), gaps: JSON.parse(String(row.gaps)),
   })) as Job[];
 }

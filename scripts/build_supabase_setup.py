@@ -10,7 +10,7 @@ def generate():
     columns = list(companies[0])
     companies = [{k: int(v) if isinstance(v, bool) else v for k, v in company.items()} for company in companies]
     parts = ["-- Replace the email placeholder below before running this file in Supabase SQL Editor.\nBEGIN;\nSELECT set_config('ofir.setup_email','REPLACE_WITH_OFIR_GOOGLE_EMAIL',true);\n"]
-    for filename in ["001_schema.sql", "002_permissions.sql", "003_worker.sql", "004_growth.sql"]:
+    for filename in ["001_schema.sql", "002_permissions.sql", "005_matching.sql", "003_worker.sql", "004_growth.sql"]:
         parts.append((ROOT / "supabase" / filename).read_text())
     parts.append("\nSELECT private.configure_owner(current_setting('ofir.setup_email'));\n")
     names = ",".join(columns)
@@ -25,5 +25,6 @@ def generate():
 if __name__ == "__main__":
     target = ROOT / "supabase/setup.sql"
     target.write_text(generate())
-    (ROOT / "supabase/upgrade-growth.sql").write_text("BEGIN;\n" + (ROOT / "supabase/004_growth.sql").read_text() + "\n" + (ROOT / "supabase/003_worker.sql").read_text() + "\nNOTIFY pgrst, 'reload schema';\nCOMMIT;\n")
-    print("Generated setup.sql and additive upgrade-growth.sql")
+    (ROOT / "supabase/upgrade-growth.sql").write_text("BEGIN;\n" + (ROOT / "supabase/004_growth.sql").read_text() + "\n" + (ROOT / "supabase/005_matching.sql").read_text() + "\n" + (ROOT / "supabase/003_worker.sql").read_text() + "\nNOTIFY pgrst, 'reload schema';\nCOMMIT;\n")
+    (ROOT / "supabase/upgrade-matching.sql").write_text("BEGIN;\n" + (ROOT / "supabase/005_matching.sql").read_text() + "\n" + (ROOT / "supabase/003_worker.sql").read_text() + "\nNOTIFY pgrst, 'reload schema';\nCOMMIT;\n")
+    print("Generated setup.sql, upgrade-growth.sql and upgrade-matching.sql")

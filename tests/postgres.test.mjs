@@ -31,6 +31,8 @@ before(async () => {
 });
 after(async () => { await db.close(); });
 
+// Legacy payloads intentionally omit matching fields; the additive columns remain nullable for them.
+
 test("setup seeds 138 companies and can be reapplied without losing data", async () => {
   const setup = fs.readFileSync("supabase/setup.sql", "utf8").replaceAll("REPLACE_WITH_OFIR_GOOGLE_EMAIL", owner);
   await db.exec(setup);
@@ -210,4 +212,28 @@ test("snapshot migration carries pending findings and preserves existing cloud m
   assert.equal((await db.query("SELECT opted_out FROM public.company_monitor_controls WHERE company_id=$1", [c.id])).rows[0].opted_out, 1);
   assert.equal((await db.query("SELECT count(*)::int AS n FROM public.job_discoveries WHERE id=$1", [data.id])).rows[0].n, 1);
   assert.equal((await db.query("SELECT status FROM public.job_discoveries WHERE id=$1", [finding.id])).rows[0].status, "linked");
+});
+
+test("profile upgrade is additive; metadata sync preserves source dates, feedback and events", async () => {
+  const upgrade = fs.readFileSync("supabase/upgrade-matching.sql", "utf8");
+  const before = (await db.query("SELECT * FROM public.jobs WHERE id=$1", [job.id])).rows[0];
+  const eventsBefore = (await db.query("SELECT * FROM public.job_events ORDER BY id")).rows;
+  await db.exec(upgrade);
+  await db.exec(upgrade);
+  assert.deepEqual((await db.query("SELECT * FROM public.jobs WHERE id=$1", [job.id])).rows[0], before);
+  await sync({ jobs: [{ ...before, score: 85, match_category: "review", match_version: "ofir-profile-v1", match_details: JSON.stringify({ checks: ["Required knowledge needs checking"] }) }] });
+  const updated = (await db.query("SELECT * FROM public.jobs WHERE id=$1", [job.id])).rows[0];
+  assert.equal(updated.match_category, "review");
+  assert.equal(updated.match_version, "ofir-profile-v1");
+  assert.equal(updated.score, 85);
+  for (const field of ["first_seen_at", "last_seen_at", "last_verified_at", "status", "fit", "familiar", "application_status", "personal_note", "user_updated_at", "version"]) assert.equal(updated[field], before[field], field);
+  assert.deepEqual((await db.query("SELECT * FROM public.job_events ORDER BY id")).rows, eventsBefore);
+  await as("authenticated", owner, async () => {
+    await assert.rejects(db.query("UPDATE public.jobs SET match_category='priority'"), /permission denied/);
+    await assert.rejects(db.query("UPDATE public.jobs SET match_details='{}'"), /permission denied/);
+  });
+  const legacy = { ...updated, score: 99, title: "Old worker must not overwrite current assessment" };
+  for (const column of ["match_category", "match_version", "match_details"]) delete legacy[column];
+  await sync({ jobs: [legacy] });
+  assert.deepEqual((await db.query("SELECT * FROM public.jobs WHERE id=$1", [job.id])).rows[0], updated);
 });

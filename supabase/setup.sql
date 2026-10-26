@@ -102,6 +102,12 @@ DROP POLICY IF EXISTS ofir_update_feedback ON public.jobs;
 CREATE POLICY ofir_update_feedback ON public.jobs FOR UPDATE TO authenticated
  USING ((SELECT public.ofir_is_owner())) WITH CHECK ((SELECT public.ofir_is_owner()));
 
+-- Additive matching metadata; existing feedback, scores and access rules are retained.
+ALTER TABLE public.jobs ADD COLUMN IF NOT EXISTS match_category TEXT DEFAULT 'unassessed'
+ CHECK (match_category IN ('unassessed','priority','review','gap'));
+ALTER TABLE public.jobs ADD COLUMN IF NOT EXISTS match_version TEXT DEFAULT '';
+ALTER TABLE public.jobs ADD COLUMN IF NOT EXISTS match_details TEXT DEFAULT '{}';
+
 -- Narrow, transaction-safe write operations for the trusted collector only.
 CREATE OR REPLACE FUNCTION public.ofir_sync(payload JSONB)
 RETURNS VOID LANGUAGE plpgsql SET search_path='' AS $$
@@ -121,8 +127,12 @@ BEGIN
      last_seen_at=excluded.last_seen_at,last_verified_at=excluded.last_verified_at,status=excluded.status,
      score=excluded.score,breakdown=excluded.breakdown,reasons=excluded.reasons,gaps=excluded.gaps,
      experience=excluded.experience,eligible=excluded.eligible,exclusion_reason=excluded.exclusion_reason,
-     content_hash=excluded.content_hash,version=excluded.version
-     WHERE excluded.last_seen_at>=jobs.last_seen_at;
+     content_hash=excluded.content_hash,version=excluded.version,
+     match_category=COALESCE(excluded.match_category,jobs.match_category),
+     match_version=COALESCE(excluded.match_version,jobs.match_version),
+     match_details=COALESCE(excluded.match_details,jobs.match_details)
+     WHERE excluded.last_seen_at>=jobs.last_seen_at
+       AND (COALESCE(jobs.match_version,'')='' OR COALESCE(excluded.match_version,'')<>'');
    -- Feedback, application status, personal notes and first_seen_at are preserved on updates.
  END LOOP;
  FOR e IN SELECT * FROM jsonb_populate_recordset(NULL::public.job_events,COALESCE(payload->'job_events','[]')) LOOP

@@ -14,7 +14,7 @@ class AuditTests(unittest.TestCase):
             db = connect(Path(folder) / 'audit.sqlite')
             seed(db)
             company = db.execute("SELECT * FROM companies WHERE name='Augury'").fetchone()
-            job = {'source_id': 'audit-fixture', 'title': 'TEST ONLY Integration Engineer', 'description': 'Integration testing.', 'location': 'Haifa, Israel', 'url': 'https://example.com/audit', 'status': 'open'}
+            job = {'source_id': 'audit-fixture', 'title': 'TEST ONLY Integration Engineer', 'description': 'Integration calibration testing, MATLAB.', 'location': 'Haifa, Israel', 'url': 'https://example.com/audit', 'status': 'open'}
             with db: save_job(db, company['id'], job, assess(job['title'], job['description'], job['location'], company))
             before = '\n'.join(db.iterdump())
             output = io.StringIO()

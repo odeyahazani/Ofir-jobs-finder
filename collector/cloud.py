@@ -72,6 +72,12 @@ class Remote:
     def rpc(self, name, body):
         return self.request("rpc/" + name, body)
 
+    def ensure_matching_schema(self):
+        try:
+            self.request('jobs?select=match_category,match_version,match_details&limit=1')
+        except RuntimeError:
+            raise RuntimeError('Matching metadata unavailable: apply supabase/upgrade-matching.sql and verify worker permissions before writing profile scores') from None
+
     def reserve_digest(self, day):
         return self.rpc("ofir_reserve_digest", {"digest_day": day, "stamp": now()}) is True
 
@@ -115,6 +121,8 @@ def main():
     scan.add_argument("--limit", type=int, default=20)
     commands.add_parser("scheduled-scan")
     commands.add_parser("audit")
+    commands.add_parser("matching-preview")
+    commands.add_parser("rescore")
     commands.add_parser("probe-sources")
     digest = commands.add_parser("digest")
     digest.add_argument("--send", action="store_true")
@@ -157,6 +165,16 @@ def main():
                 db = connect(Path(folder) / "worker.sqlite")
                 try:
                     restore(db, remote)
+                    if args.command == "matching-preview":
+                        from .matching_review import preview
+                        preview(db, output=Path('.local/matching-review/report.json'))
+                        return 0
+                    if args.command == "rescore":
+                        from .matching_review import rescore
+                        remote.ensure_matching_schema()
+                        rescore(db)
+                        remote.rpc("ofir_sync", {"payload": snapshot(db)})
+                        return 0
                     if args.command == "probe-sources":
                         from .probe import report
                         report(db, output=Path('.local/source-probe/report.json'))
@@ -166,6 +184,7 @@ def main():
                         report(db)
                         return 0
                     if args.command in {"scan", "scheduled-scan"}:
+                        remote.ensure_matching_schema()
                         ids = new_sources(db, 1 if args.command == "scheduled-scan" else args.expand_by)
                         if ids:
                             activated = remote.rpc("ofir_enable_sources", {"ids": ids})

@@ -1,5 +1,11 @@
 export type Fit = "unrated" | "yes" | "maybe" | "no";
 export type ApplicationStatus = "not_applied" | "planned" | "applied" | "interviewing" | "rejected" | "withdrawn";
+export type MatchCategory = "unassessed" | "priority" | "review" | "gap";
+export type MatchDetails = {
+  evidence: { capability: string; label: string; level: string; profile_evidence: string[]; job_quote: string }[];
+  requirements: { kind: string; quote: string; optional: boolean; minimum_years?: number; label?: string }[];
+  blockers: string[]; checks: string[];
+};
 export type Job = {
   id: string; company_id: string; company: string; title: string; location: string;
   work_model: string; url: string; description: string;
@@ -7,6 +13,7 @@ export type Job = {
   last_verified_at: string | null; status: string; score: number;
   breakdown: Record<string, number>; reasons: string[]; gaps: string[];
   experience: string; eligible: boolean; exclusion_reason: string | null;
+  match_category: MatchCategory; match_version: string; match_details: MatchDetails;
   fit: Fit; familiar: boolean; application_status: ApplicationStatus; personal_note: string;
 };
 export type Company = {
