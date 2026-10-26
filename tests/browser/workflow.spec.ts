@@ -289,3 +289,62 @@ test("rows pending recalculation show an explicit legacy state through the deplo
     db.close();
   }
 });
+
+test("a search with no priority jobs opens review candidates and gives the empty priority view a useful next step", async ({ page }) => {
+  const { DatabaseSync } = await import("node:sqlite");
+  const db = new DatabaseSync(".local/e2e.sqlite");
+  const original = db.prepare("SELECT id,fit,application_status FROM jobs WHERE source_id IN ('test-only-0','test-only-1')").all();
+  try {
+    db.prepare("UPDATE jobs SET application_status='applied' WHERE source_id='test-only-0'").run();
+    db.prepare("UPDATE jobs SET application_status='not_applied',fit='unrated' WHERE source_id='test-only-1'").run();
+    await page.goto("/");
+    await expect(page.getByRole("button", { name: "שוות בדיקה", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator(".job-card")).toHaveCount(1);
+    await expect(page.locator(".job-question")).toContainText("סעיף דרישות");
+    await page.getByRole("button", { name: "מומלצות", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "כרגע אין משרות בעדיפות גבוהה" })).toBeVisible();
+    await page.getByRole("button", { name: "למשרות ששוות בדיקה", exact: true }).click();
+    await expect(page.getByRole("button", { name: "שוות בדיקה", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator(".job-card")).toHaveCount(1);
+    await page.getByRole("textbox", { name: "חיפוש משרות" }).fill("NO RESULT FOR FILTER COUNT");
+    for (const button of await page.locator(".filter-tabs button").all()) await expect(button.locator("span")).toHaveText("0");
+    await page.screenshot({ path: "/tmp/artifacts/ofir-ux-refresh/contextual-empty.png" });
+  } finally {
+    for (const row of original) db.prepare("UPDATE jobs SET fit=?,application_status=? WHERE id=?").run(String(row.fit), String(row.application_status), String(row.id));
+    db.close();
+  }
+});
+
+test("small screens retain all filter controls and short windows retain modal reading and actions", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 700 });
+    await page.goto("/");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+    const sidebar = (await page.locator(".sidebar").boundingBox())!;
+    const brand = (await page.locator(".sidebar .brand").boundingBox())!;
+    expect(brand.x + brand.width).toBeGreaterThan(sidebar.width / 2);
+    for (const label of ["כל המשרות", "פערים בדרישות", "שוות בדיקה", "מומלצות"]) {
+      const button = page.getByRole("button", { name: label, exact: true });
+      await button.click();
+      expect((await button.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+      await expect(button).toHaveAttribute("aria-pressed", "true");
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+    }
+    await page.locator(".filter-tabs").evaluate(element => { element.scrollLeft = -element.scrollWidth; });
+    await page.locator(".summary-metrics > button").nth(1).click();
+    const selected = (await page.getByRole("button", { name: "שוות בדיקה", exact: true }).boundingBox())!;
+    const bounds = (await page.locator(".filter-tabs").boundingBox())!;
+    expect(selected.x).toBeGreaterThanOrEqual(bounds.x);
+    expect(selected.x + selected.width).toBeLessThanOrEqual(bounds.x + bounds.width);
+  }
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.getByRole("button", { name: "כל המשרות", exact: true }).click();
+  await page.getByRole("button", { name: "TEST ONLY · Junior Integration Engineer 0", exact: true }).click();
+  await expect(page.locator(".detail-panel")).toHaveCSS("animation-name", "none");
+  expect((await page.locator(".detail-scroll").boundingBox())!.height).toBeGreaterThan(60);
+  await expect(page.getByRole("button", { name: "סגירה", exact: true })).toBeInViewport();
+  await expect(page.getByRole("dialog").getByRole("link", { name: "למשרה באתר החברה" })).toBeInViewport();
+  await page.screenshot({ path: "/tmp/artifacts/ofir-ux-refresh/landscape-details.png" });
+  await page.keyboard.press("Escape");
+});

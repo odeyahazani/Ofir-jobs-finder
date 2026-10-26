@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowUpLeft, Bookmark, BriefcaseBusiness, Check, CheckCheck, ChevronLeft, ChevronRight, ExternalLink, MapPin, X } from "lucide-react";
 import { currentMatch } from "@/lib/matching";
 import type { ApplicationStatus, Fit, Job } from "@/lib/types";
-import { applicationLabels, date, fitLabels, MatchScore, MatchingBadge, safeLink, VerificationBadge } from "./job-ui";
+import { applicationLabels, CompanyMark, date, fitLabels, MatchScore, MatchingBadge, safeLink, VerificationBadge } from "./job-ui";
 
 export type JobPatch = Partial<Pick<Job, "fit" | "familiar" | "application_status" | "personal_note">>;
 export type UpdateJob = (job: Job, patch: JobPatch) => Promise<boolean>;
@@ -75,7 +75,7 @@ export default function JobDetails({ job, jobs, busy, error, message, note, onNo
         <button autoFocus className="icon-button close-modal" aria-label="סגירה" onClick={onClose}><X size={20}/></button>
       </div></div>
       <header className="detail-header">
-        <div className="company-line"><span className="company-avatar" aria-hidden="true">{job.company.slice(0, 1)}</span><span dir="auto">{job.company}</span><VerificationBadge job={job}/></div>
+        <div className="company-line"><CompanyMark name={job.company}/><span dir="auto">{job.company}</span><VerificationBadge job={job}/></div>
         <h2 id="detail-title" dir="auto">{job.title}</h2>
         <div className="detail-meta"><span><MapPin size={15}/><bdi>{job.location || "מיקום לא ידוע"}</bdi></span><span><BriefcaseBusiness size={15}/><bdi>{job.work_model || "סוג העסקה לא צוין"}</bdi></span><span>{job.experience || "ניסיון לא צוין"}</span></div>
         <div className="detail-status-line"><span className="status-caption">הסטטוס שלי</span><button className="status-shortcut" onClick={() => changeTab("tracking")}>{applicationLabels[job.application_status]}<ChevronLeft size={14}/></button>{dirty && <span className="draft-indicator">הערה בטיוטה</span>}</div>
