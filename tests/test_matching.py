@@ -76,6 +76,43 @@ class MatchingTests(unittest.TestCase):
         self.assertTrue(any(req['optional'] for req in result['match_details']['requirements']))
         self.assertEqual(self.match('MSc in Physics.')['match_category'], 'gap')
 
+    def test_degree_abbreviations_preserve_real_alternatives_and_original_quotes(self):
+        degree_lines = [
+            'B.Sc. או M.Sc. בהנדסת חשמל, הנדסת מכונות או תחום רלוונטי',
+            'B.Sc. Or M.Sc. in Electrical Engineering.',
+            'B.Sc. / M.Sc. in Physics.',
+            "Bachelor's or Master's degree in Physics.",
+            'M.Sc. או B.Sc. בפיזיקה',
+        ]
+        for degree in degree_lines:
+            with self.subTest(degree=degree):
+                result = self.match(degree)
+                self.assertEqual(result['match_category'], 'priority')
+                self.assertNotIn('תואר מתקדם נדרש כחובה', result['match_details']['blockers'])
+        result = self.match(degree_lines[0] + '\n3–5 שנות ניסיון בהנדסת בקרה או בפיתוח אלגוריתמי בקרה')
+        self.assertEqual(result['match_category'], 'gap')
+        self.assertFalse(any('תואר מתקדם' in item for item in result['match_details']['blockers']))
+        self.assertEqual(result['match_details']['mandatory_years'], 3)
+
+    def test_advanced_degree_required_or_both_degrees_is_not_softened(self):
+        for requirement in [
+            'M.Sc./PhD in Electrical Engineering, Computer Science, Physics, or a related field. – Must',
+            'Both a B.Sc. and M.Sc. are required.',
+            "Bachelor's and Master's degree required.",
+            'Ph.D. in Physics required.',
+            "Bachelor's in Physics or EE, Master's degree required.",
+        ]:
+            with self.subTest(requirement=requirement):
+                result = self.match(requirement)
+                self.assertIn('תואר מתקדם נדרש כחובה', result['match_details']['blockers'])
+                self.assertTrue(any(item['quote'] == requirement for item in result['match_details']['requirements']))
+
+    def test_optional_degree_does_not_cancel_a_following_numbered_tenure(self):
+        result = self.match('M.Sc. preferred. 3 years of professional experience required.')
+        self.assertEqual(result['match_category'], 'gap')
+        self.assertEqual(result['match_details']['mandatory_years'], 3)
+        self.assertNotIn('תואר מתקדם נדרש כחובה', result['match_details']['blockers'])
+
     def test_required_and_preferred_requirements_remain_separate(self):
         for requirement in ['4 years of experience required.\nMATLAB preferred.', '4 years experience required, MATLAB preferred.', '4 years experience, MATLAB preferred.']:
             with self.subTest(requirement=requirement):

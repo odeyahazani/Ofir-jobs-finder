@@ -14,6 +14,10 @@ HEAD_DUTIES = r'^(?:description|responsibilities|position responsibilities|key r
 ROLE = r'integrat|validat|verific|test(?:ing)? engineer|experimental|laboratory|research engineer|r&d engineer|systems? engineer|application development engineer|electrical engineer|electronics? engineer|hardware engineer|rf engineer|control engineer|optic|physicist|characterization|metrology|algorithm|אינטגרציה|ולידציה|מהנדס.{0,12}בדיקות|מערכות|אופט|פיזיק|אלגורית|בקרה'
 FUNCTIONS = [r'integrat|אינטגרציה', r'calibrat|validat|characteriz|כיול|ולידציה', r'experiment|research|scientific|ניסוי|מחקר', r'test|measurement|בדיק|מדיד', r'optic|imaging|signal|image|אופט|תמונ|אותות', r'physical model|data analys|analytic tools|מידול|ניתוח נתונ']
 DOMAINS = [r'medical|biomedical|tissue|רפואי|רקמות', r'optic|photon|imaging|sensor|אופט|דימות|חיישנ', r'physical|physics|quantum|semiconductor|פיזיק|מוליכים למחצה']
+BACHELOR = r'\b(?:bachelor(?:[’\x27]s)?(?: degree)?|b\.?sc\.?|תואר ראשון)\b'
+ADVANCED_DEGREE = r'\b(?:ph\.?d\.?|doctorate|m\.?sc\.?|master[’\x27]?s(?: degree)?|תואר שני)\b'
+# Degree abbreviations are part of their requirement, including before Hebrew "or".
+CLAUSE_BOUNDARY = r'[;•]|(?<![BMbm]\.[Ss][Cc]\.)(?<![BMbm][Ss][Cc]\.)(?<![Pp][Hh]\.[Dd]\.)(?<![Pp][Hh][Dd]\.)(?<=[.!?])\s+(?=[A-Zא-ת0-9])'
 
 
 def sections(description):
@@ -39,7 +43,7 @@ def sections(description):
 
 def clauses(requirements):
     for line, optional_section in requirements:
-        for sentence in re.split(r'[;•]|(?<=[.!?])\s+(?=[A-Zא-ת])', line):
+        for sentence in re.split(CLAUSE_BOUNDARY, line):
             # A separate preferred skill must not soften a required tenure in the same sentence.
             parts = re.split(r',\s*', sentence) if ',' in sentence and re.search(OPTIONAL, sentence, re.I) else [sentence]
             grouped = []
@@ -95,7 +99,9 @@ def assess(title, description, location, company):
         if re.search(r'(industrial|industry) experience.{0,70}(must|required|mandatory)|(must|required|mandatory).{0,70}(industrial|industry) experience', clause, re.I):
             blockers.append('ניסיון תעשייתי מפורש כתנאי חובה — אינו מתועד בפרופיל')
             requirement_checks.append({'kind': 'unsupported_requirement', 'quote': clause[:500], 'label': 'ניסיון תעשייתי חובה', 'optional': False})
-        if re.search(r'\b(?:ph\.?d|doctorate|msc|m\.sc|master.s)\b|תואר שני', clause, re.I) and not re.search(r'bachelor|b\.?sc|תואר ראשון', clause, re.I):
+        either = r'.{0,60}?(?:\bor\b|\bאו\b|/)\s*(?:an?\s+)?'
+        degree_alternative = re.search(BACHELOR + either + ADVANCED_DEGREE + '|' + ADVANCED_DEGREE + either + BACHELOR, clause, re.I)
+        if re.search(ADVANCED_DEGREE, clause, re.I) and not degree_alternative:
             blockers.append('תואר מתקדם נדרש כחובה')
             requirement_checks.append({'kind': 'unsupported_requirement', 'quote': clause[:500], 'label': 'תואר מתקדם', 'optional': False})
         critical = [name for name, pattern in [('SystemVerilog/UVM', r'systemverilog|\buvm\b'), ('כלי סימולציית VLSI', r'\bvcs\b|xcelium|questa'), ('תכנון PCB עצמאי', r'pcb.{0,35}(design|layout)|board design'), ('Zemax', r'zemax'), ('ניסיון רגולטורי', r'iso\s*13485|iec\s*60601')]
