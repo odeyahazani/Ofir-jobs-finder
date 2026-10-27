@@ -32,6 +32,10 @@ def connect(path=None):
     for name, default in [('match_category', 'unassessed'), ('match_version', ''), ('match_details', '{}')]:
         if name not in columns:
             db.execute(f"ALTER TABLE jobs ADD COLUMN {name} TEXT DEFAULT '{default}'")
+    scan_columns = {row[1] for row in db.execute('PRAGMA table_info(scans)')}
+    for name in ('scheduled_slot_id', 'scheduled_attempt', 'retry_kind', 'retry_after', 'checkpoint_receipt'):
+        if name not in scan_columns:
+            db.execute(f"ALTER TABLE scans ADD COLUMN {name} TEXT")
     return db
 
 
@@ -68,7 +72,7 @@ def save_job(db, company_id, job, assessment):
         "description": job["description"], "work_model": job.get("work_model", "לא צוין"),
         "published_at": job.get("published_at"), "updated_at": job.get("updated_at"),
         "first_seen_at": previous["first_seen_at"] if previous else stamp,
-        "last_seen_at": stamp, "last_verified_at": stamp if job["status"] == "open" else None,
+        "last_seen_at": stamp, "last_verified_at": stamp if job["status"] == "open" else previous["last_verified_at"] if previous else None,
         "status": job["status"], "score": assessment["score"],
         "breakdown": json.dumps(assessment["breakdown"], ensure_ascii=False),
         "reasons": json.dumps(assessment["reasons"], ensure_ascii=False),

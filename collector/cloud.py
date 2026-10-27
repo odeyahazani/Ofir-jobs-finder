@@ -14,7 +14,7 @@ from urllib.request import Request, build_opener, HTTPRedirectHandler
 from . import cli
 from .config import load_local_config
 from .store import connect, seed, now, process_lock
-from .growth import new_sources, scheduled_slot
+from .growth import new_sources
 from .discoveries import verify_pending
 
 TABLES = ("companies", "company_monitor_controls", "imports", "jobs", "job_events", "job_discoveries", "digest_runs")
@@ -136,9 +136,9 @@ def main():
     try:
         if args.command == "scan" and (not 1 <= args.limit <= 50 or not 0 <= args.expand_by <= 5 or (args.company and args.expand_by)):
             raise ValueError("Use a limit of 1–50, expand by 0–5, and select either expansion or a specific company")
-        if args.command == "scheduled-scan" and not scheduled_slot():
-            print("Outside the Israeli-local 08:00/17:00 scan slots; no work scheduled")
-            return 0
+        if args.command == "scheduled-scan":
+            from .scheduled import run
+            return run(Remote)
         remote = Remote()
         if args.command == "check":
             print(f"Supabase worker read access verified; {len(remote.rows('companies'))} companies")
@@ -183,9 +183,9 @@ def main():
                         from .audit import report
                         report(db)
                         return 0
-                    if args.command in {"scan", "scheduled-scan"}:
+                    if args.command == "scan":
                         remote.ensure_matching_schema()
-                        ids = new_sources(db, 1 if args.command == "scheduled-scan" else args.expand_by)
+                        ids = new_sources(db, args.expand_by)
                         if ids:
                             activated = remote.rpc("ofir_enable_sources", {"ids": ids})
                             if not isinstance(activated, list) or any(value not in ids for value in activated):
@@ -194,7 +194,7 @@ def main():
                                 for company_id in activated:
                                     db.execute("UPDATE companies SET enabled=1 WHERE id=?", (company_id,))
                             print(f"Added {len(activated)} relevant sources to monitoring")
-                        result = cli.scan(db, args.company if args.command == "scan" else None, args.limit if args.command == "scan" else 20)
+                        result = cli.scan(db, args.company, args.limit)
                         verify_pending(db, limit=5)
                         # Commit successful sources and explicit failure status even after a partial failure.
                         remote.rpc("ofir_sync", {"payload": snapshot(db)})

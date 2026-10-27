@@ -52,12 +52,13 @@ def collect_camtek(company, client):
     urls = sorted({urljoin(BOARD, link) for link in links if job_url(urljoin(BOARD, link))})
     if not urls or len(urls) > 100:
         raise SourceError('unsupported', 'Camtek listing links missing or exceed the reviewed scan budget')
-    jobs, errors = [], []
+    jobs, errors, failures = [], [], []
     for url in urls:
         try:
             jobs.append(parse_job(client.get(url), url))
         except SourceError as error:
             errors.append(url + ' (' + error.message + ')')
+            failures.append(error)
     if errors:
-        raise SourceError('unsupported', f'Partial Camtek scan: {len(jobs)} complete jobs; {len(errors)} detail pages failed. First failures: ' + '; '.join(errors[:3]), partial_jobs=jobs)
+        raise SourceError('unsupported', f'Partial Camtek scan: {len(jobs)} complete jobs; {len(errors)} detail pages failed. First failures: ' + '; '.join(errors[:3]), partial_jobs=jobs, retryable=all(e.retryable for e in failures), retry_after=max((e.retry_after or 0 for e in failures), default=0))
     return jobs

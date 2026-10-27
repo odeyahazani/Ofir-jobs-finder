@@ -37,6 +37,11 @@ class CloudTests(unittest.TestCase):
         self.assertEqual(Path("supabase/setup.sql").read_text(), generate())
         self.assertEqual(generate().count("REPLACE_WITH_OFIR_GOOGLE_EMAIL"), 1)
 
+    def test_scheduling_upgrade_matches_additive_source(self):
+        source = Path('supabase/006_scheduling.sql').read_text()
+        upgrade = Path('supabase/upgrade-scheduling.sql').read_text()
+        self.assertEqual(upgrade, "BEGIN;\n" + source + "\nNOTIFY pgrst, 'reload schema';\nCOMMIT;\n")
+
     def test_export_provides_a_private_data_only_file_without_function_definitions(self):
         self.job()
         target = Path(self.temp.name) / "transfer.sql"

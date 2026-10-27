@@ -47,3 +47,15 @@ Outstanding external checks: apply SQL to the actual Supabase project, configure
 - Classification uses only the posting's location. Missing, unrecognized, worldwide/EMEA and mixed Israel/foreign locations require review; remote work alone does not establish an Israeli location. This is a text-based display classification, not an independent address or commuting-time verification. Recommendations additionally require an Israeli classification, including for previously scored records.
 - The retained snapshot classifies as 67 Israeli, 198 abroad and one requiring location review. No records were deleted and no database migration is required for the display change.
 - All four location classifier tests and seven browser tests passed, including explicit location selection, recommendation exclusion despite legacy high scores, clearing a failed search while keeping Israel selected, and mobile layout. TypeScript checking and the production build in Vercel/Supabase mode passed. The authenticated external deployment was not independently inspected.
+
+## Scheduled collection reliability implementation (2026-10-27)
+
+Validated locally on the feature branch; no production migration, live collection, scheduled-setting change, deployment, or push was performed.
+
+- `OFIR_TEST_PG_BIN=/tmp/ofir-pg/usr/lib/postgresql/17/bin npm test`: 119 Python tests passed, including three multi-session tests against a disposable PostgreSQL 17.11 cluster; 50 Node/PGlite tests passed. No tests were skipped in that run. Without the optional PostgreSQL binary path, the three native concurrency tests explicitly skip.
+- Native tests verified a single owner across competing sessions, stale-worker fencing after takeover, and lease revalidation after waiting for the sync advisory lock. No application database URL or credential was used by those tests.
+- SQL tests covered repeatable additive migration, role restrictions, frozen selection, bounded retries/backoff/cooldown, checkpoint replay/rollback, expired slots, recovered completion, database write counts, and preservation of existing job/user/owner records.
+- Python tests covered Israeli DST changes, delayed/missed triggers, midnight recovery, source retry classification, bounded RPC replay, sanitized failure reporting, partial persistence, and retention of historical last-verified timestamps after inconclusive checks.
+- `npm run build`, `npm run typecheck`, and all 16 existing Playwright UI tests passed, including Hebrew/RTL responsive views and feedback/application history persistence.
+- The additive deployment script is `supabase/upgrade-scheduling.sql`; `setup.sql` is updated for fresh installations only. Production rollout and rollback are documented in `docs/scheduled-collection.he.md` and require separate approval.
+- Unverified: the live Supabase schema/grants/PostgREST RPC exposure, real GitHub scheduling latency/cancellation behavior, real source connectivity, and actual account billing/usage. Fixture and local PostgreSQL results do not establish those external capabilities.

@@ -1,7 +1,5 @@
 """Select a small number of relevant, supported sources for gradual onboarding."""
 import re
-from datetime import datetime
-from zoneinfo import ZoneInfo
 
 
 def new_sources(db, limit=1):
@@ -24,9 +22,3 @@ def new_sources(db, limit=1):
         score = int(ofir) * 5 + int(domain) * 4 + int(bool(re.search(r"קיסריה|בנימינה|אור עקיבא|חיפה|יקנעם|נתניה", company["location_hint"])))
         ranked.append((-score, company["name"].casefold(), company["id"]))
     return [item[2] for item in sorted(ranked)[:limit]]
-
-
-def scheduled_slot(current=None):
-    current = current or datetime.now(ZoneInfo("Asia/Jerusalem"))
-    current = current.astimezone(ZoneInfo("Asia/Jerusalem"))
-    return current.hour in {8, 17}

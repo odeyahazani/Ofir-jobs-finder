@@ -22,9 +22,11 @@ TRUSTED_SOURCE_HOSTS = ATS_HOSTS | {"www.augury.com"} | {urlsplit(c["career_url"
 
 
 class SourceError(Exception):
-    def __init__(self, status, message, partial_jobs=None):
+    def __init__(self, status, message, partial_jobs=None, *, retryable=None, retry_after=None):
         self.status, self.message = status, message
         self.partial_jobs = partial_jobs or []
+        self.retryable = status == "error" if retryable is None else retryable
+        self.retry_after = retry_after
         super().__init__(message)
 
 
@@ -143,7 +145,16 @@ class Client:
                     raise SourceError("unsupported", "Response exceeds safe size limit")
                 return data.decode("utf-8", errors="replace")
         except HTTPError as error:
-            raise SourceError("blocked" if error.code in {401, 403, 429, 491} else "error", f"HTTP {error.code}") from None
+            from email.utils import parsedate_to_datetime
+            from datetime import datetime, timezone
+            delay = None
+            value = error.headers.get("Retry-After", "") if error.headers else ""
+            try:
+                delay = int(value) if value.isdigit() else max(0, int((parsedate_to_datetime(value) - datetime.now(timezone.utc)).total_seconds()))
+            except (ValueError, TypeError, OverflowError):
+                pass
+            raise SourceError("blocked" if error.code in {401, 403, 429, 491} else "error", f"HTTP {error.code}",
+                              retryable=error.code in {408, 429} or 500 <= error.code < 600, retry_after=delay) from None
         except (URLError, TimeoutError, OSError) as error:
             # Proxy errors can contain URLs. Persist only the error category, never credentials.
             status = "blocked" if "403" in str(error) else "error"

@@ -65,3 +65,8 @@ python -m collector.cloud import-applications /path/to/applications.csv
 ```
 
 אותו פורמט CSV ואותה מניעת כפילויות כמו בייבוא המקומי. ייבוא היסטוריה יתבצע לפני הפעלת הודעות שוטפות.
+
+
+## איסוף מתוזמן ושחזור תקלות
+
+ראו [תזמון, מיגרציה, בדיקות ופריסה בטוחה](scheduled-collection.he.md). השינוי דורש את `supabase/upgrade-scheduling.sql` לפני פריסת העובד. אין להחיל `setup.sql` מחדש על פרויקט קיים או להפעיל תזמון לפני בדיקה ואישור נפרדים.
