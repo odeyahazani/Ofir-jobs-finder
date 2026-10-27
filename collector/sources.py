@@ -249,6 +249,16 @@ def needs_detail(title, description, location, company):
     return assess(title, description, location, {"notes": company.get("notes", "")})["eligible"]
 
 
+def finish_collection(jobs, failures):
+    """Preserve valid records but never call a partially verified source complete."""
+    if failures:
+        raise SourceError('error' if all(e.retryable for e in failures) else failures[0].status,
+                          f'Partial source: {len(jobs)} records retained; {len(failures)} checks failed; ' + failures[0].message,
+                          partial_jobs=jobs, retryable=all(e.retryable for e in failures),
+                          retry_after=max((e.retry_after or 0 for e in failures), default=0))
+    return jobs
+
+
 def collect(company, client=None):
     client = client or Client(company)
     if company.get("name") == "Camtek":
@@ -262,12 +272,15 @@ def collect(company, client=None):
             raise SourceError("error", "Greenhouse returned invalid JSON") from None
         if not isinstance(data, dict) or not isinstance(data.get("jobs"), list):
             raise SourceError("error", "Unexpected Greenhouse response; not treated as an empty board")
-        jobs = []
+        jobs, failures = [], []
         for item in data["jobs"]:
-            if not all(key in item for key in ("id", "title", "absolute_url", "content", "location")):
-                raise SourceError("unsupported", "Incomplete Greenhouse job record")
+            if not isinstance(item, dict) or not all(key in item for key in ("id", "title", "absolute_url", "content", "location")):
+                raise SourceError("unsupported", "Incomplete Greenhouse job record", partial_jobs=jobs)
             url = item["absolute_url"]
-            check_url(url, client.hosts)
+            try:
+                check_url(url, client.hosts)
+            except SourceError as error:
+                raise SourceError(error.status, error.message, partial_jobs=jobs, retryable=error.retryable) from None
             # The official board's full record verifies listing presence. The application page must also load.
             status = "unverified"
             if needs_detail(item["title"], plain(item["content"]), item["location"].get("name") or "", company):
@@ -275,12 +288,12 @@ def collect(company, client=None):
                     page = client.get(url)
                     if item["title"].casefold() in plain(page).casefold():
                         status = "open"
-                except SourceError:
-                    pass
+                except SourceError as error:
+                    failures.append(error)
             jobs.append({"source_id": str(item["id"]), "title": item["title"], "location": item["location"].get("name") or "לא צוין", "url": url,
                          "description": plain(item["content"]), "published_at": item.get("first_published"),
                          "updated_at": item.get("updated_at"), "status": status})
-        return jobs
+        return finish_collection(jobs, failures)
 
     # Comeet and custom company pages: use public JobPosting structured data and exact job links.
     # Do not guess API tokens, claim empty results from a JS shell, or bypass blocked pages.
@@ -289,33 +302,43 @@ def collect(company, client=None):
     if company["ats_hint"] == "Comeet":
         items = embedded_json(document, "COMPANY_POSITIONS_DATA")
         if isinstance(items, list):
-            jobs = []
+            jobs, failures = [], []
             for item in items:
                 if not isinstance(item, dict) or not all(item.get(key) for key in ["uid", "name", "url_comeet_hosted_page", "custom_fields"]):
-                    raise SourceError("unsupported", "Incomplete Comeet record; source layout may have changed")
+                    raise SourceError("unsupported", "Incomplete Comeet record; source layout may have changed", partial_jobs=jobs)
                 if item.get("is_internal"):
                     continue
-                job = comeet_job(item)
-                check_url(job["url"], client.hosts)
+                try:
+                    job = comeet_job(item)
+                    check_url(job["url"], client.hosts)
+                except SourceError as error:
+                    raise SourceError(error.status, error.message, partial_jobs=jobs, retryable=error.retryable) from None
                 if not job["description"]:
-                    raise SourceError("unsupported", "Comeet job lacks description")
+                    raise SourceError("unsupported", "Comeet job lacks description", partial_jobs=jobs)
                 if needs_detail(job["title"], job["description"], job["location"], company):
                     try:
                         detail = embedded_json(client.get(job["url"]), "POSITION_DATA")
                         if isinstance(detail, dict) and detail.get("uid") == job["source_id"] and detail.get("name") == job["title"]:
                             job["status"] = "open"
-                    except SourceError:
-                        pass
+                    except SourceError as error:
+                        failures.append(error)
                 jobs.append(job)
-            return jobs
+            return finish_collection(jobs, failures)
 
     if urlsplit(url).hostname == "spectrum-dynamics.com":
         _, links = postings(document)
         job_urls = sorted({urljoin(url, link) for link in links if urlsplit(urljoin(url, link)).hostname == "spectrum-dynamics.com" and re.fullmatch(r"/jobs/[^/]+/", urlsplit(urljoin(url, link)).path)})
         if not job_urls or len(job_urls) > 100:
             raise SourceError("unsupported", "Spectrum job links missing or source layout changed")
-        return [spectrum_job(client.get(detail), detail) for detail in job_urls]
+        jobs, failures = [], []
+        for detail in job_urls:
+            try:
+                jobs.append(spectrum_job(client.get(detail), detail))
+            except SourceError as error:
+                failures.append(error)
+        return finish_collection(jobs, failures)
 
+    failures = []
     structured, links = postings(document)
     jobs = [normalize_posting(item, url) for item in structured]
     if not structured and company["ats_hint"] == "Comeet":
@@ -325,18 +348,28 @@ def collect(company, client=None):
             raise SourceError("unsupported", "Too many candidate detail pages; source requires a dedicated adapter")
         for detail in detail_urls:
             check_url(detail, client.hosts)
-            items, _ = postings(client.get(detail))
-            jobs.extend(normalize_posting(item, detail) for item in items)
+            try:
+                items, _ = postings(client.get(detail))
+                jobs.extend(normalize_posting(item, detail) for item in items)
+            except SourceError as error:
+                failures.append(error)
     if not jobs:
+        finish_collection(jobs, failures)
         raise SourceError("unsupported", "Page readable, but no complete JobPosting records extracted; not evidence of zero jobs")
+    validated = []
     for job in jobs:
-        check_url(job["url"], client.hosts)
+        try:
+            check_url(job["url"], client.hosts)
+        except SourceError as error:
+            raise SourceError(error.status, error.message, partial_jobs=validated, retryable=error.retryable) from None
         if not job["title"] or not job["description"] or job["url"].rstrip("/") == url.rstrip("/"):
-            raise SourceError("unsupported", "Missing specific job URL or description")
+            raise SourceError("unsupported", "Missing specific job URL or description", partial_jobs=validated)
         # Verify that the individual posting is still exposed on its application page.
         try:
             detail_items, _ = postings(client.get(job["url"]))
             job["status"] = "open" if any(plain(x.get("title", "")).casefold() == job["title"].casefold() for x in detail_items) else "unverified"
-        except SourceError:
+        except SourceError as error:
             job["status"] = "unverified"
-    return jobs
+            failures.append(error)
+        validated.append(job)
+    return finish_collection(validated, failures)

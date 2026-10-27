@@ -543,7 +543,11 @@ BEGIN
  SELECT count(*) FILTER(WHERE old.id IS NULL), count(*) FILTER(WHERE old.id IS NOT NULL
    AND j.last_seen_at>=old.last_seen_at AND (coalesce(old.match_version,'')='' OR coalesce(j.match_version,'')<>'')
    AND (to_jsonb(old)-ARRAY['fit','familiar','application_status','personal_note','user_updated_at','first_seen_at']) IS DISTINCT FROM
-       (to_jsonb(j)-ARRAY['fit','familiar','application_status','personal_note','user_updated_at','first_seen_at']))
+       ((to_jsonb(j)||jsonb_build_object(
+         'match_category',coalesce(j.match_category,old.match_category),
+         'match_version',coalesce(j.match_version,old.match_version),
+         'match_details',coalesce(j.match_details,old.match_details)))
+         -ARRAY['fit','familiar','application_status','personal_note','user_updated_at','first_seen_at']))
  INTO inserted,updated FROM jsonb_populate_recordset(NULL::public.jobs,coalesce(payload->'jobs','[]')) j LEFT JOIN public.jobs old ON old.id=j.id;
  PERFORM public.ofir_sync(jsonb_build_object('companies',coalesce(payload->'companies','[]'),
   'jobs',coalesce(payload->'jobs','[]'),'job_events',coalesce(payload->'job_events','[]')));

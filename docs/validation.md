@@ -59,3 +59,12 @@ Validated locally on the feature branch; no production migration, live collectio
 - `npm run build`, `npm run typecheck`, and all 16 existing Playwright UI tests passed, including Hebrew/RTL responsive views and feedback/application history persistence.
 - The additive deployment script is `supabase/upgrade-scheduling.sql`; `setup.sql` is updated for fresh installations only. Production rollout and rollback are documented in `docs/scheduled-collection.he.md` and require separate approval.
 - Unverified: the live Supabase schema/grants/PostgREST RPC exposure, real GitHub scheduling latency/cancellation behavior, real source connectivity, and actual account billing/usage. Fixture and local PostgreSQL results do not establish those external capabilities.
+
+## Autonomous release preparation and independent QA (2026-10-27)
+
+- Fixed adapter detail errors being swallowed: partial failures now reach scheduled retry state while retaining validated jobs. Unsafe later URLs preserve only validated preceding records. Added adapter regression tests.
+- Fixed checkpoint update counts for nullable matching fields retained by `ofir_sync`; lost acknowledgement invocation counters are explicitly unknown rather than false zero. Local scheduled/manual commands now share the existing writer lock.
+- Final local suite: 127 Python tests passed, including seven native PostgreSQL tests for concurrent sessions, migration repeatability/atomic rollback, legacy sync compatibility, synthetic CSV recovery/sequence repair, and the consolidated diagnostic. All 51 Node/PGlite tests passed; no skips. Production build, TypeScript check and all 16 browser regressions passed.
+- Independent QA reviewed concurrency, security, partial persistence, reporting, recovery, and the diagnostic. No unresolved critical defect was identified. Malformed external payload types can still fail an attempt; durable preceding checkpoints and bounded retries remain the containment boundary.
+- `supabase/release-readiness-check.sql` consolidates the three outstanding production compatibility checks and returns indicators only. It has been executed only against isolated local test databases. No production SQL or resource changes were performed.
+- Synthetic CSV recovery does not verify the user's exported files, a full production backup, Auth/private-owner recovery, or production RPC bodies. Those limitations remain external deployment gates.

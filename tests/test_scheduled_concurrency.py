@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 @unittest.skipUnless(BIN, 'Set OFIR_TEST_PG_BIN to run isolated multi-session PostgreSQL tests')
-class PostgreSQLConcurrencyTests(unittest.TestCase):
+class PostgreSQLHarness(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.temp = tempfile.TemporaryDirectory(prefix='ofir-pg-test-')
@@ -50,6 +50,7 @@ class PostgreSQLConcurrencyTests(unittest.TestCase):
         cls.run_command('pg_ctl', '-D', str(cls.folder/'data'), '-m', 'immediate', '-w', 'stop')
         cls.temp.cleanup()
 
+class PostgreSQLConcurrencyTests(PostgreSQLHarness):
     def setUp(self):
         self.query('DELETE FROM scans; DELETE FROM scheduled_slots;')
         # Create and complete real due targets, leaving only the controlled fixture claimable.
@@ -90,4 +91,112 @@ class PostgreSQLConcurrencyTests(unittest.TestCase):
         self.assertEqual(self.query("SELECT status FROM scans WHERE scheduled_slot_id='fixture'").strip(),'running')
 
 
-if __name__ == '__main__': unittest.main()
+
+# Recovery uses synthetic data and private temporary CSVs, never user exports.
+@unittest.skipUnless(BIN, 'Set OFIR_TEST_PG_BIN for isolated recovery tests')
+class RecoveryTests(PostgreSQLHarness):
+    def setUp(self):
+        # Every recovery experiment gets a separate database, including object state.
+        import uuid
+        type(self).database = 'recovery_' + uuid.uuid4().hex
+        super().query('CREATE DATABASE ' + self.database)
+        setup = (ROOT/'supabase/setup.sql').read_text()
+        scheduling = (ROOT/'supabase/006_scheduling.sql').read_text()
+        setup = setup.replace(scheduling, '').replace('REPLACE_WITH_OFIR_GOOGLE_EMAIL','fixture@example.com')
+        self.query("CREATE SCHEMA auth; CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql AS $$ SELECT NULL::uuid $$; CREATE FUNCTION auth.jwt() RETURNS jsonb LANGUAGE sql AS $$ SELECT '{}'::jsonb $$;")
+        self.query(setup)
+
+    @classmethod
+    def query(cls, sql):
+        return subprocess.run([str(cls.bin/'psql'), '-X', '-v', 'ON_ERROR_STOP=1', '-At', '-h', str(cls.folder), '-p', '55439', '-d', getattr(cls,'database','postgres')],
+                              input=sql, text=True, capture_output=True, check=True).stdout
+
+    def tearDown(self):
+        super().query('DROP DATABASE ' + self.database)
+
+    def snapshot(self):
+        return {t:self.query(f"SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text),'[]') FROM public.{t} t").strip()
+                for t in ['companies','jobs','job_events','scans','imports','digest_runs','company_monitor_controls','job_discoveries']}
+
+    def seed_synthetic(self):
+        self.query("""INSERT INTO jobs(id,company_id,source_id,title,location,url,description,first_seen_at,last_seen_at,last_verified_at,
+         score,breakdown,reasons,gaps,experience,eligible,content_hash,fit,personal_note,application_status,match_version)
+         SELECT 'j'||n,(SELECT id FROM companies ORDER BY id LIMIT 1),'s'||n,'Fixture','Israel','https://example.com/'||n,
+          'Synthetic','2026-01-01','2026-01-02','2026-01-02',70,'{}','[]','[]','research',1,'hash','yes',E'עברית, "quoted"\\nsecond line','interviewing','fixture'
+         FROM generate_series(1,419) n;
+         INSERT INTO job_events(job_id,version,kind,created_at) SELECT id,1,'new','2026-01-01' FROM jobs;
+         INSERT INTO scans(company_id,started_at,status) SELECT id,'2026-01-01','ok' FROM companies;
+         INSERT INTO imports VALUES('https://example.com/1','applied','2026-01-01','2026-01-01');
+         INSERT INTO digest_runs(day,status,created_at) VALUES('2026-01-01','sent','2026-01-01');
+         INSERT INTO company_monitor_controls SELECT id,1 FROM companies ORDER BY id LIMIT 1;
+         INSERT INTO job_discoveries(id,company_id,company_name,title,url,added_at) SELECT 'finding',id,name,'Fixture','https://example.com/finding','2026-01-01' FROM companies ORDER BY id LIMIT 1;
+        """)
+
+    def test_upgrade_repeatability_and_code_rollback(self):
+        self.seed_synthetic()
+        before=self.snapshot()
+        migration=(ROOT/'supabase/upgrade-scheduling.sql').read_text()
+        self.query(migration); self.query(migration)
+        # Old scan columns unchanged; the only extra values are nullable scheduling metadata.
+        after=self.snapshot()
+        rows=json.loads(after['scans'])
+        for row in rows:
+            for col in ['scheduled_slot_id','scheduled_attempt','retry_kind','retry_after','checkpoint_receipt']:
+                self.assertIsNone(row.pop(col))
+        self.assertEqual(rows,json.loads(before['scans']))
+        for table in before.keys()-{'scans'}: self.assertEqual(after[table],before[table],table)
+        # Legacy worker's existing sync contract still operates after upgrade (code rollback).
+        payload={table:json.loads(data) for table,data in before.items()}
+        for job in payload['jobs']:
+            job['personal_note']='stale legacy note'
+            job['application_status']='not_applied'
+        encoded=json.dumps(payload,ensure_ascii=False).replace("'","''")
+        self.query("SET ROLE service_role; SELECT ofir_sync('"+encoded+"'::jsonb); RESET ROLE;")
+        self.assertEqual(self.snapshot(),after)
+
+    def test_failed_migration_rolls_back_schema_and_data(self):
+        self.seed_synthetic(); before=self.snapshot()
+        migration=(ROOT/'supabase/upgrade-scheduling.sql').read_text().replace('COMMIT;','SELECT 1/0; COMMIT;')
+        with self.assertRaises(subprocess.CalledProcessError): self.query(migration)
+        self.assertEqual(self.query("SELECT to_regclass('public.scheduled_slots') IS NULL").strip(),'t')
+        self.assertEqual(self.snapshot(),before)
+
+    def test_csv_roundtrip_restores_rows_but_requires_schema_and_sequences(self):
+        self.seed_synthetic(); before=self.snapshot()
+        tables=['companies','company_monitor_controls','imports','jobs','job_events','scans','digest_runs','job_discoveries']
+        csvs={t:self.query(f'COPY public.{t} TO STDOUT WITH CSV HEADER') for t in tables}
+        self.query('TRUNCATE ' + ','.join('public.'+t for t in tables) + ' CASCADE;')  # Only disposable synthetic database.
+        self.query('DELETE FROM private.ofir_owner;')  # Not included in public CSV exports.
+        for t in tables:
+            try:
+                self.query(f'COPY public.{t} FROM STDIN WITH CSV HEADER;\n'+csvs[t]+chr(92)+'.\n')
+            except subprocess.CalledProcessError as error:
+                self.fail(t + ': ' + error.stderr)
+        self.assertEqual(self.snapshot(),before)
+        self.assertEqual(self.query('SELECT count(*) FROM private.ofir_owner').strip(),'0')
+        # Restoring into existing schema kept original sequence counters; rebuilding schema
+        # does not. Force the latter condition and demonstrate required reconciliation.
+        self.query("ALTER SEQUENCE scans_id_seq RESTART WITH 1;")
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.query("INSERT INTO scans(company_id,started_at,status) SELECT id,'2026-02-01','ok' FROM companies LIMIT 1;")
+        self.query("SELECT setval(pg_get_serial_sequence('public.scans','id'),(SELECT max(id) FROM scans),true);")
+        self.query("INSERT INTO scans(company_id,started_at,status) SELECT id,'2026-02-01','ok' FROM companies LIMIT 1;")
+
+    def test_indicator_script_and_boundary_variations(self):
+        from scripts.build_release_check import generate
+        diagnostic=generate()
+        self.assertEqual((ROOT/'supabase/release-readiness-check.sql').read_text(),diagnostic)
+        def result():
+            lines=self.query(diagnostic).splitlines()
+            return next(json.loads(line) for line in lines if line.startswith('{'))
+        self.assertEqual(result()['compatibility'],'PASS')
+        self.query("""DO $$ DECLARE body text; BEGIN
+          SELECT prosrc INTO body FROM pg_proc WHERE oid='public.ofir_sync(jsonb)'::regprocedure;
+          EXECUTE format('CREATE OR REPLACE FUNCTION ofir_sync(payload jsonb) RETURNS void LANGUAGE plpgsql SET search_path='''' AS %L', E'  \\n' || body || E'\\n  ');
+          END $$;""")
+        self.assertEqual(result()['compatibility'],'PASS')
+        self.query("ALTER ROLE service_role NOBYPASSRLS;")
+        self.assertEqual(result()['compatibility'],'REVIEW_REQUIRED')
+        self.query("ALTER ROLE service_role BYPASSRLS;")
+        self.query((ROOT/'supabase/upgrade-scheduling.sql').read_text())
+        self.assertFalse(result()['scheduling_rpc_collision_free'])

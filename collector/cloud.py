@@ -138,7 +138,8 @@ def main():
             raise ValueError("Use a limit of 1–50, expand by 0–5, and select either expansion or a specific company")
         if args.command == "scheduled-scan":
             from .scheduled import run
-            return run(Remote)
+            with process_lock("cloud"):
+                return run(Remote)
         remote = Remote()
         if args.command == "check":
             print(f"Supabase worker read access verified; {len(remote.rows('companies'))} companies")

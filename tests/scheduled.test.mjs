@@ -237,3 +237,12 @@ test('missed events older than recovery horizon are recorded as failed, never fe
  const expired=(await db.query("SELECT * FROM scheduled_slots WHERE reason='recovery_deadline_exceeded'")).rows;
  assert.ok(expired.every(s=>s.state==='failed' && s.claims===0));
 });
+
+test('receipt does not count nullable matching fields that sync preserves unchanged', async () => {
+ const original=job(companies[0].id);
+ await rpc('ofir_sync',[{jobs:[original]}]); await fixture(); await claim(); await begin();
+ const before=(await db.query('SELECT * FROM jobs')).rows;
+ const receipt=await checkpoint('ok',false,{jobs:[{...original,match_category:null,match_details:null}]});
+ assert.equal(receipt.updated,0);
+ assert.deepEqual((await db.query('SELECT * FROM jobs')).rows,before);
+});

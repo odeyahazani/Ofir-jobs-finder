@@ -170,6 +170,9 @@ def run(remote_factory):
                 for item in report['slot'].get('companies', []):
                     if item.get('last_scan_id') == report.get('pending_scan_id') and item.get('checkpoint_confirmed'):
                         report['persistence'] = 'confirmed'
+                        for counter in ('invocation_checked','invocation_jobs_inserted','invocation_jobs_updated'):
+                            report[counter] = None
+                        report['invocation_counts_status'] = 'unknown_after_response_loss; use confirmed slot totals'
                         report['reason'] = 'checkpoint_confirmed_after_response_loss'
             except Exception:
                 pass

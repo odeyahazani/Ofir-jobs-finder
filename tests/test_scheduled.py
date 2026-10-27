@@ -102,6 +102,35 @@ class SchedulingTests(unittest.TestCase):
         self.assertEqual(begins,['b'])
         self.assertEqual(json.loads(self.report.read_text())['invocation_checked'],1)
 
+    def test_two_lost_replies_resolve_persistence_without_false_invocation_counts(self):
+        remote = MagicMock()
+        slot = {'id': 'fixture', 'target_at': '2026-10-25T06:17:00+00:00', 'company_ids': ['a','b'],
+                'companies': [{'company_id': 'a', 'state': 'checked'}, {'company_id': 'b', 'state': 'ready'}]}
+        calls = []
+        def rpc(name, body):
+            calls.append((name, body))
+            if name == 'ofir_claim_scheduled': return {'outcome': 'claimed', 'slot': slot}
+            if name == 'ofir_begin_scheduled_company': return {'status': 'running', 'id':42}
+            if name == 'ofir_checkpoint_scheduled': raise RuntimeError('lost reply')
+            if name == 'ofir_scheduled_report': return {**slot,'companies':[{'last_scan_id':42,'checkpoint_confirmed':True}]}
+            if name == 'ofir_finish_scheduled': return {**slot, 'state':'completed'}
+            return slot
+        remote.rpc.side_effect = rpc
+        def restore(db, remote):
+            seed(db)
+            # Use a real row with id b, preserving the rest of its schema.
+            db.execute("UPDATE companies SET id='b' WHERE name='Augury'")
+            db.commit()
+        with patch('collector.cloud.restore', side_effect=restore), patch('collector.cli.collect', return_value=[]) as collect:
+            self.assertEqual(scheduled.run(lambda:remote),1)
+        self.assertEqual(collect.call_count,1)
+        begins = [body['company'] for name,body in calls if name=='ofir_begin_scheduled_company']
+        self.assertEqual(begins,['b'])
+        report=json.loads(self.report.read_text())
+        self.assertIsNone(report['invocation_checked'])
+        self.assertEqual(report['persistence'],'confirmed')
+        self.assertEqual(sum(n=='ofir_checkpoint_scheduled' for n,b in calls),2)
+
     def test_cancelled_report_has_explicit_incomplete_summary(self):
         self.report.write_text(json.dumps({'outcome':'running','persistence':'unconfirmed'}))
         destination=Path(self.temp.name)/'summary.md'
@@ -154,6 +183,44 @@ class SchedulingTests(unittest.TestCase):
             after = db.execute('SELECT first_seen_at,last_verified_at,status FROM jobs').fetchone()
             self.assertEqual(tuple(after)[:2],tuple(verified))
             self.assertEqual(after['status'],'unverified')
+
+    def test_detail_failures_reach_retry_ledger_instead_of_success(self):
+        from collector.sources import collect
+        company={'name':'Fixture','ats_hint':'Greenhouse','ats_identifier':'fixture','career_url':'https://job-boards.greenhouse.io/fixture'}
+        board=json.dumps({'jobs':[{'id':1,'title':'Engineer','absolute_url':'https://job-boards.greenhouse.io/fixture/jobs/1','content':'Requirements','location':{'name':'Israel'}}]})
+        comeet=Path('tests/fixtures/comeet-bootstrap.html').read_text()
+        generic=Path('tests/fixtures/comeet.html').read_text()
+        for kind,document in [('Greenhouse',board),('Comeet',comeet),('Generic HTML',generic)]:
+            client=MagicMock(); client.hosts={'job-boards.greenhouse.io','www.comeet.com'}
+            client.get.side_effect=[document,SourceError('error','timeout')]
+            with patch('collector.sources.needs_detail',return_value=True):
+                with self.assertRaises(SourceError) as caught:
+                    collect({**company,'ats_hint':kind},client)
+            self.assertTrue(caught.exception.retryable,kind)
+            self.assertGreater(len(caught.exception.partial_jobs),0,kind)
+            self.assertEqual(caught.exception.partial_jobs[0]['status'],'unverified')
+
+    def test_unsafe_later_record_preserves_only_previously_validated_jobs(self):
+        from collector.sources import collect
+        company={'name':'Fixture','ats_hint':'Greenhouse','ats_identifier':'fixture'}
+        item={'id':1,'title':'Engineer','absolute_url':'https://job-boards.greenhouse.io/fixture/jobs/1','content':'Requirements','location':{'name':'Israel'}}
+        client=MagicMock();client.hosts={'job-boards.greenhouse.io'}
+        client.get.return_value=json.dumps({'jobs':[item,{**item,'id':2,'absolute_url':'https://127.0.0.1/private'}]})
+        with patch('collector.sources.needs_detail',return_value=False):
+            with self.assertRaises(SourceError) as caught: collect(company,client)
+        self.assertEqual(len(caught.exception.partial_jobs),1)
+        self.assertEqual(caught.exception.partial_jobs[0]['source_id'],'1')
+        self.assertFalse(caught.exception.retryable)
+
+    def test_spectrum_retains_successes_when_later_page_fails(self):
+        from collector.sources import collect
+        client=MagicMock();client.hosts={'spectrum-dynamics.com'}
+        client.get.side_effect=['<a href="/jobs/a/">a</a><a href="/jobs/b/">b</a>','valid',SourceError('blocked','restricted')]
+        with patch('collector.sources.spectrum_job',return_value={'source_id':'a','status':'open'}):
+            with self.assertRaises(SourceError) as caught:
+                collect({'name':'Spectrum','ats_hint':'Generic HTML','career_url':'https://spectrum-dynamics.com/careers/'},client)
+        self.assertFalse(caught.exception.retryable)
+        self.assertEqual(len(caught.exception.partial_jobs),1)
 
     def test_existing_sqlite_gets_additive_scan_columns_without_data_loss(self):
         path=Path(self.temp.name)/'old.sqlite'
