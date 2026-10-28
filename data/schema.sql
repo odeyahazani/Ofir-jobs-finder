@@ -13,7 +13,8 @@ CREATE TABLE IF NOT EXISTS companies (
 CREATE TABLE IF NOT EXISTS scans (
  id INTEGER PRIMARY KEY, company_id TEXT NOT NULL REFERENCES companies(id),
  started_at TEXT NOT NULL, finished_at TEXT, status TEXT NOT NULL,
- fetched_count INTEGER, eligible_count INTEGER, new_count INTEGER, message TEXT
+ fetched_count INTEGER, eligible_count INTEGER, new_count INTEGER, message TEXT,
+ scheduled_slot_id TEXT, scheduled_attempt TEXT, retry_kind TEXT, retry_after TEXT, checkpoint_receipt TEXT
 );
 CREATE TABLE IF NOT EXISTS jobs (
  id TEXT PRIMARY KEY, company_id TEXT NOT NULL REFERENCES companies(id),

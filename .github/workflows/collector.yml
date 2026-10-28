@@ -3,14 +3,14 @@ name: Job collector
 # Scheduled scans remain off until ENABLE_SCHEDULED_SCANS=true is set in repository variables.
 on:
   schedule:
-    # Both Israeli UTC offsets; the worker runs only in the 08:00 and 17:00 local hours.
-    - cron: '17 5,6,14,15 * * *'
+    # Wake-up only; Supabase claims due Israeli-local slots and eligible retries.
+    - cron: '17 * * * *'
   workflow_dispatch:
     inputs:
       command:
         description: Operation
         type: choice
-        options: [scan, scan-and-expand, scan-and-expand-five, check, audit, matching-preview, rescore, probe-sources, digest-preview, digest-send]
+        options: [scheduled-scan, scan, scan-and-expand, scan-and-expand-five, check, audit, matching-preview, rescore, probe-sources, digest-preview, digest-send]
         default: scan
 
 permissions:
@@ -56,6 +56,9 @@ jobs:
             digest-send) python -m collector.cloud digest --send ;;
             *) exit 2 ;;
           esac
+      - name: Scheduled collection summary
+        if: always() && (github.event_name == 'schedule' || inputs.command == 'scheduled-scan')
+        run: python -m collector.scheduled
       - name: Save career page review
         if: inputs.command == 'probe-sources'
         uses: actions/upload-artifact@v6

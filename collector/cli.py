@@ -15,13 +15,17 @@ from .matching import exclude, VERSION
 from .sources import collect, SourceError
 
 
-def scan(db, company_name=None, limit=None):
+def scan(db, company_name=None, limit=None, *, company_ids=None, checkpoint=None):
     if limit is not None and not 1 <= limit <= 50:
         raise ValueError("Scan limit must be between 1 and 50 companies")
     query = "SELECT * FROM companies WHERE enabled=1" + (" AND name=?" if company_name else "") + " ORDER BY CASE WHEN last_checked IS NULL THEN 0 ELSE 1 END,last_checked,id"
+    if company_ids is not None:
+        if not company_ids:
+            return 0
+        query = query.replace(" ORDER BY", " AND id IN (" + ",".join("?" for _ in company_ids) + ") ORDER BY")
     if limit is not None:
         query += f" LIMIT {int(limit)}"
-    companies = db.execute(query, (company_name,) if company_name else ()).fetchall()
+    companies = db.execute(query, ((company_name,) if company_name else ()) + tuple(company_ids or ())).fetchall()
     if not companies:
         raise ValueError("No enabled company matches the selection")
     failures = 0
@@ -30,6 +34,7 @@ def scan(db, company_name=None, limit=None):
         started = now()
         with db:
             scan_id = db.execute("INSERT INTO scans(company_id,started_at,status) VALUES (?,?,'running')", (company["id"], started)).lastrowid
+        retryable, retry_after = False, None
         try:
             partial = None
             try:
@@ -60,16 +65,20 @@ def scan(db, company_name=None, limit=None):
                 message = f"{len(jobs)} jobs extracted; {eligible} eligible; {new} new"
                 if partial:
                     failures += 1
+                    retryable, retry_after = partial.retryable, partial.retry_after
                     message += '; ' + partial.message
                 db.execute("UPDATE companies SET source_status=?,last_checked=?,last_result=?,job_count=?,verified_url=? WHERE id=?", (status, now(), message, None if partial else len(jobs), company["career_url"], company["id"]))
                 db.execute("UPDATE scans SET finished_at=?,status=?,fetched_count=?,eligible_count=?,new_count=?,message=? WHERE id=?", (now(), status, len(jobs), eligible, new, message, scan_id))
             print(company["name"], status, message)
         except SourceError as error:
             failures += 1
+            retryable, retry_after = error.retryable, error.retry_after
             with db:
                 db.execute("UPDATE companies SET source_status=?,last_checked=?,last_result=?,job_count=NULL WHERE id=?", (error.status, now(), error.message, company["id"]))
                 db.execute("UPDATE scans SET finished_at=?,status=?,message=? WHERE id=?", (now(), error.status, error.message, scan_id))
             print(company["name"], error.status, error.message)
+        if checkpoint:
+            checkpoint(dict(db.execute("SELECT * FROM scans WHERE id=?", (scan_id,)).fetchone()), retryable, retry_after)
     return 1 if failures else 0
 
 

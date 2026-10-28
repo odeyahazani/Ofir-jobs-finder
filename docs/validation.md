@@ -47,3 +47,54 @@ Outstanding external checks: apply SQL to the actual Supabase project, configure
 - Classification uses only the posting's location. Missing, unrecognized, worldwide/EMEA and mixed Israel/foreign locations require review; remote work alone does not establish an Israeli location. This is a text-based display classification, not an independent address or commuting-time verification. Recommendations additionally require an Israeli classification, including for previously scored records.
 - The retained snapshot classifies as 67 Israeli, 198 abroad and one requiring location review. No records were deleted and no database migration is required for the display change.
 - All four location classifier tests and seven browser tests passed, including explicit location selection, recommendation exclusion despite legacy high scores, clearing a failed search while keeping Israel selected, and mobile layout. TypeScript checking and the production build in Vercel/Supabase mode passed. The authenticated external deployment was not independently inspected.
+
+## Scheduled collection reliability implementation (2026-10-27)
+
+Validated locally on the feature branch; no production migration, live collection, scheduled-setting change, deployment, or push was performed.
+
+- `OFIR_TEST_PG_BIN=/tmp/ofir-pg/usr/lib/postgresql/17/bin npm test`: 119 Python tests passed, including three multi-session tests against a disposable PostgreSQL 17.11 cluster; 50 Node/PGlite tests passed. No tests were skipped in that run. Without the optional PostgreSQL binary path, the three native concurrency tests explicitly skip.
+- Native tests verified a single owner across competing sessions, stale-worker fencing after takeover, and lease revalidation after waiting for the sync advisory lock. No application database URL or credential was used by those tests.
+- SQL tests covered repeatable additive migration, role restrictions, frozen selection, bounded retries/backoff/cooldown, checkpoint replay/rollback, expired slots, recovered completion, database write counts, and preservation of existing job/user/owner records.
+- Python tests covered Israeli DST changes, delayed/missed triggers, midnight recovery, source retry classification, bounded RPC replay, sanitized failure reporting, partial persistence, and retention of historical last-verified timestamps after inconclusive checks.
+- `npm run build`, `npm run typecheck`, and all 16 existing Playwright UI tests passed, including Hebrew/RTL responsive views and feedback/application history persistence.
+- The additive deployment script is `supabase/upgrade-scheduling.sql`; `setup.sql` is updated for fresh installations only. Production rollout and rollback are documented in `docs/scheduled-collection.he.md` and require separate approval.
+- Unverified: the live Supabase schema/grants/PostgREST RPC exposure, real GitHub scheduling latency/cancellation behavior, real source connectivity, and actual account billing/usage. Fixture and local PostgreSQL results do not establish those external capabilities.
+
+## Autonomous release preparation and independent QA (2026-10-27)
+
+- Fixed adapter detail errors being swallowed: partial failures now reach scheduled retry state while retaining validated jobs. Unsafe later URLs preserve only validated preceding records. Added adapter regression tests.
+- Fixed checkpoint update counts for nullable matching fields retained by `ofir_sync`; lost acknowledgement invocation counters are explicitly unknown rather than false zero. Local scheduled/manual commands now share the existing writer lock.
+- Final local suite: 127 Python tests passed, including seven native PostgreSQL tests for concurrent sessions, migration repeatability/atomic rollback, legacy sync compatibility, synthetic CSV recovery/sequence repair, and the consolidated diagnostic. All 51 Node/PGlite tests passed; no skips. Production build, TypeScript check and all 16 browser regressions passed.
+- Independent QA reviewed concurrency, security, partial persistence, reporting, recovery, and the diagnostic. No unresolved critical defect was identified. Malformed external payload types can still fail an attempt; durable preceding checkpoints and bounded retries remain the containment boundary.
+- `supabase/release-readiness-check.sql` consolidates the three outstanding production compatibility checks and returns indicators only. It has been executed only against isolated local test databases. No production SQL or resource changes were performed.
+- Synthetic CSV recovery does not verify the user's exported files, a full production backup, Auth/private-owner recovery, or production RPC bodies. Those limitations remain external deployment gates.
+
+## End-to-end stabilization and adversarial release QA (2026-10-28)
+
+Actual starting state: local and remote feature branch at fb6c493; main at b74d465; PR #1 open/mergeable, Vercel success. Historical Actions runs on main are not evidence of the new scheduler operating. The cloud session has no Supabase MCP tools or configured CLI MCP servers, no production database bindings, and no live compatibility/recovery claim was made.
+
+Adversarial QA reproduced and fixed two additional paths: readable detail pages lacking the required job evidence were previously reported as source success, and malformed nested source records could discard valid preceding records. Missing/mismatched required detail evidence now produces explicit unsupported partial results; Greenhouse/Comeet nested validation preserves safe preceding records. Matching/scoring and Hebrew/RTL application behavior remain unchanged.
+
+Exact final validation commands:
+
+- `OFIR_TEST_PG_BIN=/tmp/ofir-pg/usr/lib/postgresql/17/bin npm test`: **130 Python tests passed**, including eight native PostgreSQL tests; **54 Node/PGlite tests passed**. Zero failed/skipped in the final run. One coverage-test assertion initially assumed no refreshes in a final partially filled batch; corrected to assert 18 newly covered companies plus two legitimate refreshes, then reran the full suite successfully.
+- `npm run build`: passed.
+- `npm run typecheck`: passed.
+- `npm run test:e2e`: **16 passed**, zero failures/skips.
+- `OFIR_TEST_PG_BIN=/tmp/ofir-pg/usr/lib/postgresql/17/bin python -m unittest tests.test_scheduled_concurrency.RecoveryTests.test_indicator_script_and_boundary_variations -v`: passed after adding deliberate schema/grant/key mismatch cases.
+
+| Lifecycle stage | Verified containment and evidence |
+|---|---|
+| Trigger/due decision | UTC/Israeli DST, delayed/missed events, midnight and expiry tests; no runtime-hour discard |
+| Claim/lease | Native competing sessions, takeover, and lease recheck after sync-lock wait |
+| Selection | Frozen cap20, opt-outs, new-slot priority, 138-company seven-slot selector test |
+| Fetch/parse/validate | Transient/restricted/unsupported/mismatched/malformed source fixtures; safe partial prefix retained |
+| Matching | Existing matching suite and browser evidence regressions unchanged |
+| Persist/checkpoint | Native worker-to-SQL lifecycle with service_role; receipts reconciled, same ID after URL change, personal fields preserved |
+| Retry/completion | Backoff, exhaustion, cooldown, abandoned workers, replay, lost responses and recovered completion |
+| Reporting | Partial outcomes, confirmed/unknown persistence counts, unsupported/blocked aggregates, cancellation summary |
+| Migration/recovery | Native additive repeatability, failed transaction rollback, legacy sync, synthetic eight-table CSV roundtrip and sequence repair |
+
+Independent reviewer participated separately from implementation, reproduced both new adapter issues, independently ran the two adapter regressions and the native worker lifecycle test successfully, and reviewed final SQL/diagnostic/reporting/coverage changes. No unresolved critical data-integrity, authorization, or concurrency defect was identified.
+
+Unexecuted external checks: live diagnostic through the user's local MCP session; actual production backup/restore; controlled production collection; activation/observation of scheduled collection and current production company coverage. Existing public CSVs remain data-only, and synthetic recovery does not validate them. No production resources, settings, data, notifications or collection were changed. The single consolidated release checkpoint is the read-only diagnostic plus backup protection/risk acceptance and explicit authorization for the documented staged rollout.

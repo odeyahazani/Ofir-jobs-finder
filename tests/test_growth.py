@@ -4,7 +4,8 @@ import tempfile
 import unittest
 from unittest.mock import patch, MagicMock
 import os
-from collector.growth import new_sources, scheduled_slot
+from collector.growth import new_sources
+from collector.scheduled import due_targets
 from collector.store import connect, seed
 from collector.cli import scan
 from collector.sources import Client, SourceError
@@ -53,10 +54,9 @@ class GrowthTests(unittest.TestCase):
         self.assertEqual(self.db.execute("SELECT COUNT(*) FROM scans").fetchone()[0], 1)
 
     def test_schedule_follows_israeli_daylight_saving(self):
-        self.assertTrue(scheduled_slot(datetime(2026, 7, 1, 5, 17, tzinfo=timezone.utc)))
-        self.assertFalse(scheduled_slot(datetime(2026, 7, 1, 6, 17, tzinfo=timezone.utc)))
-        self.assertTrue(scheduled_slot(datetime(2026, 12, 1, 6, 17, tzinfo=timezone.utc)))
-        self.assertTrue(scheduled_slot(datetime(2026, 12, 1, 15, 17, tzinfo=timezone.utc)))
+        for month, utc_hour in [(7, 5), (12, 6)]:
+            current = datetime(2026, month, 1, utc_hour, 17, tzinfo=timezone.utc)
+            self.assertTrue(any(t.date() == current.date() and t.hour == 8 for t in due_targets(current)))
 
     def test_new_sources_cannot_fetch_private_network_addresses(self):
         company = {"name": "Fixture", "career_url": "https://example.com/careers"}
