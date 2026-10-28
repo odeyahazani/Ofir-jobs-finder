@@ -92,6 +92,51 @@ class PostgreSQLConcurrencyTests(PostgreSQLHarness):
 
 
 
+    def test_worker_lifecycle_persists_and_reconciles_against_real_postgres(self):
+        from unittest.mock import patch
+        import contextlib, io
+        from collector import scheduled
+        harness=self
+        class RemoteFixture:
+            def ensure_matching_schema(self):
+                harness.query('SELECT match_version FROM jobs LIMIT 1')
+            def rows(self, table):
+                return json.loads(harness.query(f"SELECT coalesce(jsonb_agg(to_jsonb(t)),'[]') FROM public.{table} t").strip())
+            def rpc(self, name, body):
+                def literal(value):
+                    if value is None: return 'NULL'
+                    value=json.dumps(value,ensure_ascii=False) if isinstance(value,(dict,list)) else str(value)
+                    return "'"+value.replace("'","''")+"'"
+                args=','.join(k+'=>'+literal(v) for k,v in body.items())
+                output=harness.query(f'SET ROLE service_role; SELECT public.{name}({args}); RESET ROLE;')
+                return next(json.loads(line) for line in output.splitlines() if line.startswith('{'))
+        job={'source_id':'worker-fixture','title':'Integration Engineer','description':'Integration testing. Requirements: Python, 0-1 years experience.',
+             'location':'Haifa, Israel','url':'https://example.com/original','status':'open'}
+        with tempfile.TemporaryDirectory() as temp, patch.object(scheduled,'REPORT_PATH',Path(temp)/'report.json'), contextlib.redirect_stdout(io.StringIO()):
+            with patch('collector.cli.collect',return_value=[job]):
+                self.assertEqual(scheduled.run(RemoteFixture),0)
+            first=json.loads(self.query('SELECT to_jsonb(j) FROM jobs j').strip())
+            self.assertEqual(self.query('SELECT count(*) FROM job_events').strip(),'1')
+            report=json.loads((Path(temp)/'report.json').read_text())
+            self.assertEqual(report['invocation_jobs_inserted'],1)
+            self.assertEqual(report['slot']['checked'],1)
+            self.query("UPDATE jobs SET personal_note='הערה',application_status='interviewing',fit='yes';")
+            self.query(f"INSERT INTO scheduled_slots(id,local_day,slot_name,target_at,deadline_at,company_ids) VALUES('fixture-second','2000-01-02','evening',clock_timestamp()-interval '1 hour',clock_timestamp()+interval '23 hours','[\"{self.company}\"]');")
+            with patch('collector.cli.collect',return_value=[{**job,'url':'https://example.com/changed','title':'Integration Engineer updated'}]):
+                self.assertEqual(scheduled.run(RemoteFixture),0)
+            second=json.loads(self.query('SELECT to_jsonb(j) FROM jobs j').strip())
+            for key in ('id','first_seen_at'): self.assertEqual(second[key],first[key])
+            self.assertEqual(second['personal_note'],'הערה')
+            self.assertEqual(second['application_status'],'interviewing')
+            self.assertEqual(second['url'],'https://example.com/changed')
+            self.assertEqual(self.query('SELECT count(*) FROM job_events').strip(),'1')
+            report=json.loads((Path(temp)/'report.json').read_text())
+            self.assertEqual(report['invocation_jobs_inserted'],0)
+            self.assertEqual(report['invocation_jobs_updated'],1)
+            with patch('collector.cli.collect') as collect:
+                self.assertEqual(scheduled.run(RemoteFixture),0)
+                collect.assert_not_called()
+
 # Recovery uses synthetic data and private temporary CSVs, never user exports.
 @unittest.skipUnless(BIN, 'Set OFIR_TEST_PG_BIN for isolated recovery tests')
 class RecoveryTests(PostgreSQLHarness):
@@ -198,5 +243,15 @@ class RecoveryTests(PostgreSQLHarness):
         self.query("ALTER ROLE service_role NOBYPASSRLS;")
         self.assertEqual(result()['compatibility'],'REVIEW_REQUIRED')
         self.query("ALTER ROLE service_role BYPASSRLS;")
+        self.query('REVOKE UPDATE ON public.jobs FROM service_role;')
+        self.assertFalse(result()['worker_table_grants'])
+        self.query('GRANT UPDATE ON public.jobs TO service_role;')
+        self.query('DROP INDEX public.scans_source_start;')
+        self.assertFalse(result()['required_unique_keys'])
+        self.query('CREATE UNIQUE INDEX scans_source_start ON public.scans(company_id,started_at);')
+        self.query('ALTER TABLE public.jobs RENAME COLUMN match_version TO renamed_version;')
+        self.assertFalse(result()['table_schema_compatible'])
+        self.query('ALTER TABLE public.jobs RENAME COLUMN renamed_version TO match_version;')
+        self.assertEqual(result()['compatibility'],'PASS')
         self.query((ROOT/'supabase/upgrade-scheduling.sql').read_text())
         self.assertFalse(result()['scheduling_rpc_collision_free'])

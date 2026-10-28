@@ -200,6 +200,22 @@ class SchedulingTests(unittest.TestCase):
             self.assertGreater(len(caught.exception.partial_jobs),0,kind)
             self.assertEqual(caught.exception.partial_jobs[0]['status'],'unverified')
 
+    def test_readable_mismatched_detail_pages_are_explicit_partial_failures(self):
+        from collector.sources import collect
+        company={'name':'Fixture','ats_hint':'Greenhouse','ats_identifier':'fixture','career_url':'https://job-boards.greenhouse.io/fixture'}
+        board=json.dumps({'jobs':[{'id':1,'title':'Engineer','absolute_url':'https://job-boards.greenhouse.io/fixture/jobs/1','content':'Requirements','location':{'name':'Israel'}}]})
+        comeet=Path('tests/fixtures/comeet-bootstrap.html').read_text()
+        generic=Path('tests/fixtures/comeet.html').read_text()
+        for kind,document in [('Greenhouse',board),('Comeet',comeet),('Generic HTML',generic)]:
+            client=MagicMock(); client.hosts={'job-boards.greenhouse.io','www.comeet.com'}
+            client.get.side_effect=[document,'<html>This job is no longer available</html>']
+            with patch('collector.sources.needs_detail',return_value=True):
+                with self.assertRaises(SourceError) as caught:
+                    collect({**company,'ats_hint':kind},client)
+            self.assertFalse(caught.exception.retryable,kind)
+            self.assertGreater(len(caught.exception.partial_jobs),0,kind)
+            self.assertEqual(caught.exception.partial_jobs[0]['status'],'unverified')
+
     def test_unsafe_later_record_preserves_only_previously_validated_jobs(self):
         from collector.sources import collect
         company={'name':'Fixture','ats_hint':'Greenhouse','ats_identifier':'fixture'}
@@ -210,6 +226,17 @@ class SchedulingTests(unittest.TestCase):
             with self.assertRaises(SourceError) as caught: collect(company,client)
         self.assertEqual(len(caught.exception.partial_jobs),1)
         self.assertEqual(caught.exception.partial_jobs[0]['source_id'],'1')
+        self.assertFalse(caught.exception.retryable)
+
+    def test_malformed_nested_greenhouse_record_retains_valid_prefix(self):
+        from collector.sources import collect
+        item={'id':1,'title':'Engineer','absolute_url':'https://job-boards.greenhouse.io/f/jobs/1','content':'Requirements','location':{'name':'Israel'}}
+        client=MagicMock(); client.hosts={'job-boards.greenhouse.io'}
+        client.get.return_value=json.dumps({'jobs':[item,{**item,'id':2,'location':None}]})
+        with patch('collector.sources.needs_detail',return_value=False):
+            with self.assertRaises(SourceError) as caught:
+                collect({'ats_hint':'Greenhouse','ats_identifier':'f'},client)
+        self.assertEqual(len(caught.exception.partial_jobs),1)
         self.assertFalse(caught.exception.retryable)
 
     def test_spectrum_retains_successes_when_later_page_fails(self):

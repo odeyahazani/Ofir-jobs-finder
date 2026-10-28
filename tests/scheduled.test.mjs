@@ -246,3 +246,40 @@ test('receipt does not count nullable matching fields that sync preserves unchan
  assert.equal(receipt.updated,0);
  assert.deepEqual((await db.query('SELECT * FROM jobs')).rows,before);
 });
+
+test('oldest-first selection covers 138 healthy active companies in seven bounded slots', async () => {
+ await db.exec('UPDATE companies SET enabled=1,last_checked=NULL');
+ const covered=new Set();
+ for(let n=0;n<7;n++) {
+  const id=`coverage/${n}`, t=`coverage-worker-token-${n}`;
+  await db.query(`INSERT INTO scheduled_slots(id,local_day,slot_name,target_at,deadline_at)
+    VALUES($1,$2,'morning',clock_timestamp()-interval '1 minute',clock_timestamp()+interval '23 hours')`,[id,`2001-01-${String(n+1).padStart(2,'0')}`]);
+  assert.equal((await claim(t)).slot.id,id);
+  const selection=await rpc('ofir_prepare_scheduled',[id,t,[]]);
+  assert.ok(selection.selected<=20);
+  assert.equal(selection.company_ids.filter(c=>!covered.has(c)).length,Math.min(20,138-covered.size));
+  for(const c of selection.company_ids) covered.add(c);
+  // Exercise the selector's ordering with persisted last-checked times. Checkpoint
+  // correctness is separately exercised by the real PostgreSQL lifecycle test.
+  await db.query('UPDATE companies SET last_checked=clock_timestamp()::text WHERE id=ANY($1::text[])',[selection.company_ids]);
+  await db.query("UPDATE scheduled_slots SET state='completed',lease_until=NULL WHERE id=$1",[id]);
+ }
+ assert.equal(covered.size,138);
+});
+
+test('pause during collection retains in-flight checkpoint but never schedules a retry', async () => {
+ await fixture(); await claim(); await begin();
+ await db.query('UPDATE companies SET enabled=0 WHERE id=$1',[companies[0].id]);
+ await checkpoint('ok',false,{jobs:[job(companies[0].id)]});
+ const r=await rpc('ofir_finish_scheduled',['test/morning',token]);
+ assert.equal(r.state,'completed'); assert.equal(r.checked,1); assert.equal(r.pending_retry,0);
+ assert.equal((await db.query('SELECT count(*)::int AS n FROM jobs')).rows[0].n,1);
+});
+
+test('unsupported and restricted sources have explicit aggregate counts', async () => {
+ await fixture('test/morning',companies.slice(0,2).map(c=>c.id)); await claim();
+ await begin(); await checkpoint('unsupported');
+ await begin(companies[1].id); await checkpoint('blocked',false,{},companies[1].id);
+ const r=await rpc('ofir_finish_scheduled',['test/morning',token]);
+ assert.equal(r.state,'failed'); assert.equal(r.unsupported,1); assert.equal(r.blocked,1); assert.equal(r.checked,0);
+});

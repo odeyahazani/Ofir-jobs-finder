@@ -67,6 +67,8 @@ BEGIN
  RETURN to_jsonb(slot)||totals||jsonb_build_object('companies',details,
   'selected',jsonb_array_length(coalesce(slot.company_ids,'[]')),
   'checked',(SELECT count(*) FROM jsonb_array_elements(details) d WHERE d->>'state'='checked'),
+  'unsupported',(SELECT count(*) FROM jsonb_array_elements(details) d WHERE d->>'source_status'='unsupported'),
+  'blocked',(SELECT count(*) FROM jsonb_array_elements(details) d WHERE d->>'source_status'='blocked'),
   'waived',(SELECT count(*) FROM jsonb_array_elements(details) d WHERE d->>'state'='waived'),
   'exhausted',(SELECT count(*) FROM jsonb_array_elements(details) d WHERE d->>'state'='exhausted'),
   'pending_retry',(SELECT count(*) FROM jsonb_array_elements(details) d WHERE d->>'state' IN ('ready','running','pending_retry')),

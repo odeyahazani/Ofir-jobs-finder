@@ -218,6 +218,14 @@ def embedded_json(document, name):
 
 
 def comeet_job(item):
+    if (not isinstance(item, dict) or not isinstance(item.get("custom_fields"), dict)
+            or not isinstance(item["custom_fields"].get("details", []), list)
+            or not isinstance(item.get("location") or {}, dict)
+            or not all(isinstance(item.get(k), str) and item[k] for k in ("uid", "name", "url_comeet_hosted_page"))):
+        raise SourceError("unsupported", "Malformed Comeet record")
+    if any(not isinstance(field, dict) or not all(isinstance(field.get(k, ""), str) for k in ("name", "value"))
+           for field in item["custom_fields"].get("details", [])):
+        raise SourceError("unsupported", "Malformed Comeet detail fields")
     fields = item.get("custom_fields", {}).get("details", [])
     description = "\n".join(plain(field.get("name", "")) + "\n" + plain(field.get("value", "")) for field in fields)
     location = item.get("location") or {}
@@ -274,7 +282,10 @@ def collect(company, client=None):
             raise SourceError("error", "Unexpected Greenhouse response; not treated as an empty board")
         jobs, failures = [], []
         for item in data["jobs"]:
-            if not isinstance(item, dict) or not all(key in item for key in ("id", "title", "absolute_url", "content", "location")):
+            if (not isinstance(item, dict) or not all(key in item for key in ("id", "title", "absolute_url", "content", "location"))
+                    or not isinstance(item["location"], dict)
+                    or not all(isinstance(item[k], str) and item[k] for k in ("title", "absolute_url", "content"))
+                    or not isinstance(item["location"].get("name", ""), (str, type(None)))):
                 raise SourceError("unsupported", "Incomplete Greenhouse job record", partial_jobs=jobs)
             url = item["absolute_url"]
             try:
@@ -288,6 +299,8 @@ def collect(company, client=None):
                     page = client.get(url)
                     if item["title"].casefold() in plain(page).casefold():
                         status = "open"
+                    else:
+                        failures.append(SourceError("unsupported", "Greenhouse detail page does not verify the listed job"))
                 except SourceError as error:
                     failures.append(error)
             jobs.append({"source_id": str(item["id"]), "title": item["title"], "location": item["location"].get("name") or "לא צוין", "url": url,
@@ -320,6 +333,8 @@ def collect(company, client=None):
                         detail = embedded_json(client.get(job["url"]), "POSITION_DATA")
                         if isinstance(detail, dict) and detail.get("uid") == job["source_id"] and detail.get("name") == job["title"]:
                             job["status"] = "open"
+                        else:
+                            failures.append(SourceError("unsupported", "Comeet detail data does not match the listed job"))
                     except SourceError as error:
                         failures.append(error)
                 jobs.append(job)
@@ -368,6 +383,8 @@ def collect(company, client=None):
         try:
             detail_items, _ = postings(client.get(job["url"]))
             job["status"] = "open" if any(plain(x.get("title", "")).casefold() == job["title"].casefold() for x in detail_items) else "unverified"
+            if job["status"] == "unverified":
+                failures.append(SourceError("unsupported", "Detail page lacks a matching JobPosting"))
         except SourceError as error:
             job["status"] = "unverified"
             failures.append(error)

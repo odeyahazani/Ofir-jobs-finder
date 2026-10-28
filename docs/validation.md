@@ -68,3 +68,33 @@ Validated locally on the feature branch; no production migration, live collectio
 - Independent QA reviewed concurrency, security, partial persistence, reporting, recovery, and the diagnostic. No unresolved critical defect was identified. Malformed external payload types can still fail an attempt; durable preceding checkpoints and bounded retries remain the containment boundary.
 - `supabase/release-readiness-check.sql` consolidates the three outstanding production compatibility checks and returns indicators only. It has been executed only against isolated local test databases. No production SQL or resource changes were performed.
 - Synthetic CSV recovery does not verify the user's exported files, a full production backup, Auth/private-owner recovery, or production RPC bodies. Those limitations remain external deployment gates.
+
+## End-to-end stabilization and adversarial release QA (2026-10-28)
+
+Actual starting state: local and remote feature branch at fb6c493; main at b74d465; PR #1 open/mergeable, Vercel success. Historical Actions runs on main are not evidence of the new scheduler operating. The cloud session has no Supabase MCP tools or configured CLI MCP servers, no production database bindings, and no live compatibility/recovery claim was made.
+
+Adversarial QA reproduced and fixed two additional paths: readable detail pages lacking the required job evidence were previously reported as source success, and malformed nested source records could discard valid preceding records. Missing/mismatched required detail evidence now produces explicit unsupported partial results; Greenhouse/Comeet nested validation preserves safe preceding records. Matching/scoring and Hebrew/RTL application behavior remain unchanged.
+
+Exact final validation commands:
+
+- `OFIR_TEST_PG_BIN=/tmp/ofir-pg/usr/lib/postgresql/17/bin npm test`: **130 Python tests passed**, including eight native PostgreSQL tests; **54 Node/PGlite tests passed**. Zero failed/skipped in the final run. One coverage-test assertion initially assumed no refreshes in a final partially filled batch; corrected to assert 18 newly covered companies plus two legitimate refreshes, then reran the full suite successfully.
+- `npm run build`: passed.
+- `npm run typecheck`: passed.
+- `npm run test:e2e`: **16 passed**, zero failures/skips.
+- `OFIR_TEST_PG_BIN=/tmp/ofir-pg/usr/lib/postgresql/17/bin python -m unittest tests.test_scheduled_concurrency.RecoveryTests.test_indicator_script_and_boundary_variations -v`: passed after adding deliberate schema/grant/key mismatch cases.
+
+| Lifecycle stage | Verified containment and evidence |
+|---|---|
+| Trigger/due decision | UTC/Israeli DST, delayed/missed events, midnight and expiry tests; no runtime-hour discard |
+| Claim/lease | Native competing sessions, takeover, and lease recheck after sync-lock wait |
+| Selection | Frozen cap20, opt-outs, new-slot priority, 138-company seven-slot selector test |
+| Fetch/parse/validate | Transient/restricted/unsupported/mismatched/malformed source fixtures; safe partial prefix retained |
+| Matching | Existing matching suite and browser evidence regressions unchanged |
+| Persist/checkpoint | Native worker-to-SQL lifecycle with service_role; receipts reconciled, same ID after URL change, personal fields preserved |
+| Retry/completion | Backoff, exhaustion, cooldown, abandoned workers, replay, lost responses and recovered completion |
+| Reporting | Partial outcomes, confirmed/unknown persistence counts, unsupported/blocked aggregates, cancellation summary |
+| Migration/recovery | Native additive repeatability, failed transaction rollback, legacy sync, synthetic eight-table CSV roundtrip and sequence repair |
+
+Independent reviewer participated separately from implementation, reproduced both new adapter issues, independently ran the two adapter regressions and the native worker lifecycle test successfully, and reviewed final SQL/diagnostic/reporting/coverage changes. No unresolved critical data-integrity, authorization, or concurrency defect was identified.
+
+Unexecuted external checks: live diagnostic through the user's local MCP session; actual production backup/restore; controlled production collection; activation/observation of scheduled collection and current production company coverage. Existing public CSVs remain data-only, and synthetic recovery does not validate them. No production resources, settings, data, notifications or collection were changed. The single consolidated release checkpoint is the read-only diagnostic plus backup protection/risk acceptance and explicit authorization for the documented staged rollout.
