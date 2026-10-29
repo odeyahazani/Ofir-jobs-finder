@@ -1,95 +1,173 @@
 # Ofir Jobs Finder
 
-Personal Hebrew/RTL job tracker for Ofir Cohen. Next.js 16 + React, Supabase storage for deployment and SQLite for local development, a standard-library Python collector, optional Google sign-in via Supabase Auth, and a Telegram daily digest. No paid LLM or maps API is required.
+**An engineering-focused job discovery, matching, and application-tracking platform for an early-career Electrical Engineer and Physicist.**
 
-## Cloud deployment
+[Live application](https://ofir-jobs-finder.vercel.app) · [Deployment guide](docs/cloud-deployment.he.md) · [Candidate profile](docs/candidate-profile.he.md) · [Project roadmap](docs/plan.he.md)
 
-Vercel is supported with `OFIR_STORAGE=supabase` and a Supabase PostgreSQL database protected by RLS. See [step-by-step cloud deployment](docs/cloud-deployment.he.md). Apply `supabase/setup.sql` with the owner email placeholder filled first. The web server uses the signed-in Google user and publishable key; no service-role key is used by the website. The durable collector runs separately with `python -m collector.cloud`, with a manual GitHub Actions workflow provided. Real Google/Supabase/Telegram operation still requires provider settings and credentials. Automatic scheduling is not activated.
+> **Portfolio / project context:** This is a collaborative, AI-assisted software engineering project built to solve a real job-search workflow. It combines product requirements, system architecture, third-party integrations, collection reliability, data validation, and iterative UI/UX development. It should not be presented as evidence that every component was independently implemented by Ofir.
 
-## Gradual growth and shared discovery format
+## Why this project exists
 
-The authenticated website now accepts CSV/JSON findings with a preview and an unverified inbox. Users can enable or pause company monitoring. Apply `supabase/upgrade-growth.sql` to an existing installation; it preserves the configured owner and all existing data. See [growth setup](docs/growth-setup.he.md) and [the shared chat-task output format](docs/chat-task-output.he.md). A chat task is not automatically connected by sharing a format. Scheduled cloud scans are gated by the repository variable `ENABLE_SCHEDULED_SCANS=true`; until it is configured, scheduled jobs skip. Scheduled collection targets 08:17/17:17 Asia/Jerusalem with hourly wake-ups, a 24-hour recovery horizon, durable slot claims and bounded per-source retries. Monitoring expands by at most one relevant supported source per slot, scanning up to 20 selected sources and respecting user opt-outs. Apply the additive `supabase/upgrade-scheduling.sql` before deploying this worker; see [scheduled collection and safe rollout](docs/scheduled-collection.he.md). No scheduled Telegram messages are enabled by this change.
+Relevant junior engineering positions can be difficult to find: they are spread across company career pages, advertised under inconsistent job titles, and often require a closer look at responsibilities rather than title alone. Ofir Jobs Finder centralizes those opportunities and helps distinguish genuinely relevant openings from unsuitable, stale, duplicate, or unverified listings.
 
-## Development
+The platform is designed around Ofir's background in **electrical engineering and physics**, with an emphasis on **systems integration, R&D, lab testing, validation, electro-optics, sensing, medical devices, and signal/image processing**. Academic laboratory and project experience is not misrepresented as industry employment.
 
-Requirements: Node 24+, npm, Python 3.12+, Linux/macOS. Use the existing checkout; cloud tasks already have an isolated workspace, so do not create a worktree.
+## What it does
+
+- **Discovers engineering jobs** from supported official company career pages and applicant-tracking systems.
+- **Tracks a company database** and records source coverage, scan results, and failures rather than silently treating unreadable websites as empty.
+- **Evaluates relevance** with an explainable, rule-based scoring model, using professional fit, experience level, skills, industry, location, and growth potential.
+- **Separates verified and unverified findings.** A newly discovered URL is not automatically a confirmed open vacancy.
+- **Tracks job and application state** in a Hebrew, right-to-left dashboard; supports CSV imports and records previously encountered opportunities.
+- **Provides source and match context** for reviewing jobs rather than relying on a score alone.
+- **Supports scheduled collection** with durable state, bounded retries, and restart-safe checkpoints, subject to deployment configuration.
+- **Includes optional Telegram digest functionality** in the codebase; it requires credentials and deliberate activation.
+
+## Product and technology
+
+| Layer | Implementation |
+| --- | --- |
+| Frontend | Next.js 16, React 19, TypeScript, Hebrew/RTL |
+| Hosting | Vercel |
+| Authentication | Google sign-in through Supabase Auth |
+| Production storage | Supabase PostgreSQL, protected by Row Level Security |
+| Local development | SQLite |
+| Collection and matching | Python, official ATS adapters, rule-based matching |
+| Automation | GitHub Actions with scheduled/manual operations |
+| Tests | Python unit tests, Node tests, PGlite-based PostgreSQL/RLS tests, Playwright browser tests |
+| Notifications | Optional Telegram digest |
+
+The application avoids paid LLM and maps API dependencies. **AI-assisted development** describes the development workflow, not a claim that the live matching engine uses a large language model. Matching is currently rules-based and intentionally inspectable.
+
+## Architecture
+
+```text
+Official company career pages / ATS
+                |
+                v
+        Python collector
+      verification + parsing
+                |
+                v
+      Job records and events
+       Supabase PostgreSQL
+                |
+         +------+------+
+         |             |
+         v             v
+  Matching / status   Next.js app
+  and source history  Hebrew / RTL UI
+         |             |
+         +------+------+
+                |
+                v
+       Job review / tracking
+
+GitHub Actions -> scheduled or manual cloud collection
+Google OAuth   -> authenticated dashboard
+Telegram       -> optional digest (if configured)
+```
+
+**Source integrity matters:** supported adapters include Greenhouse, Comeet, a dedicated Spectrum Dynamics flow, and selected official pages exposing structured job data. Unsupported JavaScript-only pages, access blocks, robots restrictions, and networking errors are reported explicitly; the collector does not bypass logins or CAPTCHA.
+
+## Matching principles
+
+The matching model is designed for an entry-level engineering search rather than generic keyword matching. The documented weight distribution is:
+
+| Factor | Weight |
+| --- | ---: |
+| Responsibilities / professional fit | 30 |
+| Experience and entry-level suitability | 25 |
+| Technical skill fit | 20 |
+| Industry and technology | 10 |
+| Location and commute | 10 |
+| Professional growth potential | 5 |
+| **Total** | **100** |
+
+Scores are guidance, **not guarantees of eligibility**. The scorer in [`collector/scoring.py`](collector/scoring.py) is a conservative rule-based implementation, not a complete natural-language requirements parser. Unknown commute or growth information does not receive full credit. Only sufficiently scored, verified, active, eligible opportunities can enter recommendations or digests; the broader view retains excluded and unverified results for inspection.
+
+## Collection reliability and automation
+
+The repository includes [a GitHub Actions collector workflow](.github/workflows/collector.yml), with manual operations for scanning, auditing, checking, rescoring, previewing matches, and previewing or sending digests.
+
+The scheduled workflow wakes hourly at minute 17; database-side logic targets **08:17 and 17:17 Asia/Jerusalem** collection windows. Reliability measures include:
+
+- Durable claims / 30-minute leases to prevent overlapping writes.
+- Frozen per-window company selection (up to 20 enabled sources plus limited expansion).
+- Per-company save checkpoints, bounded retries, and a 24-hour recovery horizon.
+- Explicit reporting of completed, failed, skipped, and waiting-for-retry states.
+- No automatic interpretation of a blocked or incomplete source as a verified empty result.
+
+**Important operational distinction:** the workflow's scheduled job is gated behind the GitHub repository variable `ENABLE_SCHEDULED_SCANS=true`. The presence of a cron definition, or a successful workflow run, is **not proof** that a live collection occurred. Verify the variable, applied migrations, Actions logs, and run summaries before claiming operational coverage. See [scheduled collection and rollout](docs/scheduled-collection.he.md).
+
+## Project status and known gaps
+
+The system has a deployed web application and a working codebase for collection, matching, and tracking. A prior project snapshot reported **138 tracked companies, 419 stored job records, and only 14 of 138 companies checked**; these are historical diagnostic figures, **not current live metrics or verified active-job counts**. Check the database and scan reports for current numbers.
+
+Areas still requiring continued validation or product work include:
+
+- Increasing successful coverage of official company job sources, particularly unsupported and blocked sites.
+- Verifying that scheduled runs performed actual scans rather than skipped wake-ups.
+- Importing and reconciling existing application history where it has not yet been loaded.
+- Completing notification setup if Telegram delivery is wanted.
+- Improving the job-details experience, particularly an explicit, evidence-based **“Why this job matches Ofir”** explanation. Do not treat that planned enhancement as shipped without checking the application.
+
+External chat-based job discovery and company expansion workflows can supply CSV/JSON findings, but they **do not automatically update the application solely by sharing a format**. Import and validation steps are required. See [growth setup](docs/growth-setup.he.md) and [shared discovery format](docs/chat-task-output.he.md).
+
+## Run locally
+
+Prerequisites: **Node.js 24+**, npm, **Python 3.12+**. The project was documented for Linux/macOS development.
 
 ```bash
-cd /workspace/Ofir-jobs-finder
-npm ci --cache /workspace/.npm-cache
-cp .env.example .env.local  # only if .env.local does not already exist
+git clone https://github.com/odeyahazani/Ofir-jobs-finder.git
+cd Ofir-jobs-finder
+npm ci
+cp .env.example .env.local
 npm run db:init
 npm run dev
 ```
 
-The development server binds to loopback. `LOCAL_DEV_MODE=1` bypasses auth only on loopback in development, with no conflicting forwarded host. Production never permits this bypass. The initial dashboard has real imported companies and zero placeholder jobs. Python and Next share `.local/ofir.sqlite`; set the same absolute `OFIR_DB_PATH` for both if relocating it. `.env.local` is loaded by Next and the Python CLI; use simple `KEY=value` entries with quotes if needed, without interpolation or shell commands. Never commit it.
+Access requires repository permission while the repository is private. Configure environment variables as described in [cloud deployment](docs/cloud-deployment.he.md). The local app binds to loopback; `LOCAL_DEV_MODE=1` is **development-only** and never a production authentication bypass. Do not commit `.env.local`.
+
+Useful development commands:
 
 ```bash
-npm run scan                              # enabled companies only; failure => nonzero exit
+npm run scan                        # Scan enabled local sources
 python -m collector.cli scan --company Augury
-npm run digest                            # preview only; sends nothing
-python -m collector.cli import-applications /path/to/applications.csv
-```
-
-Import CSV columns: `url,status,applied_at`; `url` is a specific HTTPS job URL, `status` defaults to `applied`; allowed values are `not_applied,planned,applied,interviewing,rejected,withdrawn`. Dates are optional metadata. A malformed row rejects the whole import. Import before discovery is supported, and repeated imports are safe. Exact canonical URLs match existing jobs; unknown URLs are retained for future scans. Imports from other ATS URL aliases may require manual reconciliation; no fuzzy application history matches are inferred.
-
-## Validation
-
-```bash
-npm test                                # Python + real PostgreSQL SQL/RLS tests (PGlite)
+npm run digest                      # Preview; no message sent
 npm run typecheck
+npm test
 npm run build
 npm run test:e2e
 ```
 
-SQL permission tests exercise PostgreSQL via PGlite, with test Google claims and no external Supabase connection. They verify owner-only access, column restrictions, repeatable imports/syncs and durable digest reservations.
+Playwright's browser tests require Chromium. The test suite uses isolated fixtures; passing it does not confirm external ATS connectivity or production OAuth/Telegram setup. For production cloud collection, see `python -m collector.cloud` and the documented workflow.
 
-Browser tests use a separate `.local/e2e.sqlite`, test-only job fixtures and port 3100; they do not send network requests to ATS sites or Telegram. They require Chromium: the config uses `/usr/bin/chromium` when available, otherwise run `npx playwright install chromium`. Override the executable with `PLAYWRIGHT_CHROMIUM_PATH` when needed. Stop any development server first; Next development servers share a build lock. Real source connectivity is checked separately with `npm run scan` and is never inferred from fixture tests.
+## Production deployment and access control
 
-## Sources and limitations
+- **Vercel** hosts the Next.js app; use `OFIR_STORAGE=supabase`, not ephemeral SQLite, in production.
+- **Supabase** stores the durable production records and enforces RLS. Deployment requires the setup SQL and relevant additive migrations; follow [cloud deployment](docs/cloud-deployment.he.md) and [growth setup](docs/growth-setup.he.md).
+- **Google sign-in** must have a correctly configured OAuth provider, site URL, callback, and allowed email. The web application does not require exposing a service-role key.
+- **GitHub Actions** can run the separate collector with appropriate repository variables and secrets.
+- **Telegram** is optional; set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` securely only if delivery is desired. Sending is intentional, not implied by deployment.
 
-All 138 rows are retained in `data/companies.json`, including original Active, priority, last-result and check-time metadata. Those values are not trusted as new checks. Eight initial sources are enabled. Source results distinguish pending, success, verified-empty (complete official API/bootstrap list only), blocked, unsupported and error; failures never close existing jobs or become zero-job results.
+Do not commit credentials, `.local/`, application-history exports, personal candidate data, database backups, or production secrets. Production access and actual integrations must be verified independently.
 
-Greenhouse: documented public board API and application-page check. Comeet: public JSON bootstrap records and per-job validation on the official detail page, with JSON-LD fallback. Spectrum Dynamics: a dedicated public careers/detail-page adapter with application-instruction checks. Other sources can use public JobPosting JSON-LD. Only potentially eligible roles receive extra detail-page requests; other records are retained as unverified/excluded. JavaScript-only or unsupported schemas require another adapter and are explicitly reported as unsupported. HTTP/TLS verification and robots restrictions remain enabled. No scraping behind logins or CAPTCHA bypasses. New source URLs reject local/private hosts; the collector validates resolved public addresses. Managed HTTPS-proxy environments may resolve the reviewed seed/ATS hosts through the existing proxy when local DNS is unavailable; arbitrary imported hosts fail closed when public DNS cannot be verified.
+## Collaboration and ownership
 
-The rule-based scorer is deliberately inspectable and conservative; see `collector/scoring.py`. It is not a general natural-language requirements parser. Read the gaps before applying. Academic experience is never described as industrial experience. Publication dates are separate from first seen / source updated / last verified; unknown dates stay unknown. Scores follow the supplied weights but unverified commute and growth information earn no full credit. Only verified active eligible jobs score >=70 appear in recommendations/digests. The All tab exposes excluded, unverified and closed records for review.
+This repository is currently hosted under **`odeyahazani`** and is **private**. The goal is to make it a collaborative project in which Ofir can participate directly, document engineering decisions, validate changes, and contribute through branches and pull requests. Repository access or transfer of ownership must be managed explicitly in GitHub; this README does not itself change permissions.
 
-## Google sign-in
+The candidate-specific data, external integrations, and source code should be reviewed before any decision to make the repository public as a portfolio project.
 
-1. Create a Supabase project and enable the Google OAuth provider with a Google OAuth web application. Register Supabase's callback URL in Google as shown in Supabase's provider settings. Do not put the Google client secret in this repository.
-2. Configure Supabase's site URL and redirect allowlist for the exact public HTTPS origin and `/auth/callback` route.
-3. Set `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `OFIR_ALLOWED_EMAIL` and `APP_URL` securely. The publishable key is intended to be public; no Supabase service-role key is needed. Set `LOCAL_DEV_MODE=0`.
-4. Build and run. Verify a real Google login, reject a different email, and verify logged-out requests redirect to login. The server validates the user with Supabase on every protected request. A missing configuration fails closed. Authentication code alone does not establish that your provider setup works.
+## Further documentation
 
-## Telegram and scheduling
+- [Cloud deployment and authentication](docs/cloud-deployment.he.md)
+- [Reliable scheduled collection](docs/scheduled-collection.he.md)
+- [Growth and discovery imports](docs/growth-setup.he.md)
+- [Shared discovery format](docs/chat-task-output.he.md)
+- [Candidate profile and job-search scope](docs/candidate-profile.he.md)
+- [Scope and roadmap](docs/plan.he.md)
 
-Create a bot using BotFather and have Ofir start a conversation with it. Store `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` securely; never paste them into chat or commit them. Configure an HTTPS `APP_URL` linking back to the deployed dashboard. No Telegram interaction is performed during setup or tests.
+---
 
-```bash
-python -m collector.cli digest             # inspect preview
-python -m collector.cli digest --send      # intentional real delivery, only with eligible events
-```
-
-Digests exclude familiar/applied/not-fit/unverified/stale records, cover all qualifying pending events with a count, and link the top five. One daily send reservation prevents repeat delivery. An uncertain send is not automatically retried: inspect Telegram and `digest_runs` before manually clearing a reservation. Truncation should be avoided by reasonable job title lengths; links to the dashboard provide the full list.
-
-On the deployed host, invoke `python -m collector.scheduler` once per minute through cron/systemd with this repository as the working directory and the same environment/database. Example cron entry (adjust absolute Python path; cron does not activate virtual environments):
-
-```cron
-* * * * * cd /workspace/Ofir-jobs-finder && /absolute/path/to/python -m collector.scheduler >> /workspace/Ofir-jobs-finder/.local/scheduler.log 2>&1
-```
-
-The scheduler computes Asia/Jerusalem time itself, runs scans once at 08:00/17:00 and a digest at 18:00, with a 15-minute catch-up window, persisting daily task reservations. It does not catch up after that window or automatically retry failed/uncertain sends. The local-host scheduler is not installed by this repository; verify the host task runner and review its logs after activation. Add log rotation on the deployed host.
-
-## Deployment and data
-
-For Vercel, use the Supabase storage mode described above and the independent cloud collector workflow. GitHub Actions runners rebuild temporary SQLite state from Supabase and persist their results using restricted database operations; they do not rely on runner disks or caches for durable data. Never use SQLite storage on Vercel. For a single Linux host, local SQLite remains available with a persistent volume. Free service tiers are subject to current usage limits. Run `npm ci`, `npm run build`, `npm run db:init`, then `npm start` behind an HTTPS reverse proxy that preserves the public Host/Origin and forwards to loopback. Configure a process manager for Next plus the scheduler. Keep the repository and database private; candidate and application history are personal data.
-
-Back up with SQLite's online backup API, not by copying only the live main file (WAL may contain recent writes):
-
-```bash
-python -c "from collector.store import connect; import sqlite3; source=connect(); target=sqlite3.connect('/secure/persistent/path/ofir-backup.sqlite'); source.backup(target); target.close(); source.close()"
-```
-
-Do not commit `.local/`, imported application CSVs, secrets or backups. Source discovery/network domains must be permitted in the runtime. Initially required: `boards-api.greenhouse.io`, `job-boards.greenhouse.io`, `job-boards.eu.greenhouse.io`, `boards.greenhouse.io`, `www.augury.com`, `www.comeet.com`, `www.comeet.co`, `spectrum-dynamics.com`. Google/Supabase and Telegram require their configured service hosts in the deployed network policy. A saved environment draft does not apply networking, start processes or publish the project.
-
-See [the Hebrew scope and roadmap](docs/plan.he.md) and [candidate profile](docs/candidate-profile.he.md).
+*Ofir Jobs Finder is a personal engineering project and job-search tool, not a commercial recruitment product.*
